@@ -579,15 +579,15 @@ fn list_groups(
         .map(|value| Value::from(value.clone()))
         .unwrap_or(Value::Null);
     let params_vec = if search.is_none() {
-        vec![date_value]
+        vec![date_value.clone()]
     } else if use_fts {
         vec![
-            date_value,
+            date_value.clone(),
             Value::from(search_fts.clone().unwrap_or_default()),
             Value::from(search_like.clone()),
         ]
     } else {
-        vec![date_value, Value::from(search_like.clone())]
+        vec![date_value.clone(), Value::from(search_like.clone())]
     };
 
     let rows = stmt

@@ -226,7 +226,7 @@ function App() {
           onChange={(event) => setDateFilter(event.currentTarget.value)}
           placeholder="Date filter YYYY-MM-DD"
         />
-        <button type="button" onClick={refreshGroups}>
+        <button type="button" onClick={() => refreshGroups()}>
           Apply
         </button>
         <div className="mode-toggle">
