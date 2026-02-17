@@ -7,7 +7,7 @@ function App() {
   const [dateFilter, setDateFilter] = useState("");
   const [searchText, setSearchText] = useState("");
   const [groups, setGroups] = useState<GroupItem[]>([]);
-  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [images, setImages] = useState<ImageItem[]>([]);
   const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(
     null
@@ -19,7 +19,7 @@ function App() {
     if (!searchText.trim()) return groups;
     const lowered = searchText.trim().toLowerCase();
     return groups.filter((group) =>
-      `${group.date} ${group.size}`.toLowerCase().includes(lowered)
+      `${group.label} ${group.size}`.toLowerCase().includes(lowered)
     );
   }, [groups, searchText]);
 
@@ -30,7 +30,7 @@ function App() {
     }
     void (async () => {
       const result = await invoke<ImageItem[]>("list_images", {
-        batchId: selectedGroupId,
+        groupId: selectedGroupId,
       });
       setImages(result);
       setSelectedImageIndex(result.length > 0 ? 0 : null);
@@ -106,6 +106,19 @@ function App() {
     }
   }
 
+  async function extractPrompts() {
+    setStatus("Extracting prompts...");
+    try {
+      const result = await invoke<PromptResult>("extract_prompts");
+      setStatus(
+        `Scanned ${result.scanned} images, updated ${result.updated} prompts.`
+      );
+      await refreshGroups();
+    } catch (error) {
+      setStatus(`Prompt extraction failed: ${String(error)}`);
+    }
+  }
+
   return (
     <main className="app-shell">
       <header className="app-header">
@@ -129,7 +142,7 @@ function App() {
         <input
           value={searchText}
           onChange={(event) => setSearchText(event.currentTarget.value)}
-          placeholder="Search (date or count for now)"
+          placeholder="Search prompts or dates"
         />
         <input
           value={dateFilter}
@@ -138,6 +151,9 @@ function App() {
         />
         <button type="button" onClick={refreshGroups}>
           Apply
+        </button>
+        <button type="button" onClick={extractPrompts}>
+          Extract Prompts
         </button>
         <span className="status">{status}</span>
       </section>
@@ -157,8 +173,11 @@ function App() {
               >
                 <img src={thumbSrc} alt={`Group ${group.id}`} />
                 <div className="group-meta">
-                  <span className="group-date">{group.date}</span>
-                  <span className="group-count">{group.size} images</span>
+                  <span className="group-date">
+                    {group.group_type === "prompt" ? "Prompt" : "Batch"} •{" "}
+                    {group.size} images
+                  </span>
+                  <span className="group-count">{group.label}</span>
                 </div>
               </button>
             );
@@ -215,8 +234,9 @@ function App() {
 export default App;
 
 type GroupItem = {
-  id: number;
-  date: string;
+  id: string;
+  label: string;
+  group_type: string;
   size: number;
   representative_path: string;
 };
@@ -230,4 +250,9 @@ type ImageItem = {
 type ScanResult = {
   total_images: number;
   total_batches: number;
+};
+
+type PromptResult = {
+  scanned: number;
+  updated: number;
 };

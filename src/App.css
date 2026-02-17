@@ -144,6 +144,10 @@ button:hover {
 
 .group-count {
   color: #6a5d54;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .image-grid {
