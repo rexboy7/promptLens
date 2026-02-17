@@ -431,8 +431,28 @@ fn list_groups(
         return Ok(groups);
     }
 
-    let prompt_query = if mode == "prompt_date" {
-        r#"
+    let (prompt_query, order_clause) = if mode == "date_prompt" {
+        (
+            r#"
+            SELECT
+                'date_prompt' AS group_type,
+                p.id AS group_id,
+                p.text AS label,
+                i.date AS date,
+                COUNT(i.id) AS size,
+                MIN(i.path) AS representative_path
+            FROM prompts p
+            JOIN images i ON i.prompt_id = p.id
+            WHERE (?1 IS NULL OR i.date = ?1)
+              AND (?2 IS NULL OR LOWER(p.text) LIKE ?3)
+            GROUP BY i.date, p.id
+            "#
+            .to_string(),
+            "ORDER BY date DESC, label DESC".to_string(),
+        )
+    } else if mode == "prompt_date" {
+        (
+            r#"
             SELECT
                 'prompt_date' AS group_type,
                 p.id AS group_id,
@@ -446,9 +466,12 @@ fn list_groups(
               AND (?2 IS NULL OR LOWER(p.text) LIKE ?3)
             GROUP BY p.id, i.date
             "#
-            .to_string()
+            .to_string(),
+            "ORDER BY group_type ASC, label DESC".to_string(),
+        )
     } else {
-        r#"
+        (
+            r#"
             SELECT
                 'prompt' AS group_type,
                 p.id AS group_id,
@@ -462,7 +485,9 @@ fn list_groups(
               AND (?2 IS NULL OR LOWER(p.text) LIKE ?3)
             GROUP BY p.id
             "#
-            .to_string()
+            .to_string(),
+            "ORDER BY group_type ASC, label DESC".to_string(),
+        )
     };
 
     let mut stmt = conn
@@ -489,9 +514,10 @@ fn list_groups(
                   AND (?2 IS NULL OR LOWER(b.date) LIKE ?3)
                 GROUP BY b.id, b.date
             )
-            ORDER BY group_type ASC, label DESC
+            {}
             "#,
-                prompt_query
+                prompt_query,
+                order_clause
             ),
         )
         .map_err(|e| e.to_string())?;
@@ -509,7 +535,7 @@ fn list_groups(
             let label: String = row.get(2)?;
             let date: Option<String> = row.get(3)?;
             Ok(GroupItem {
-                id: if group_type == "prompt_date" {
+                id: if group_type == "prompt_date" || group_type == "date_prompt" {
                     format!("pd:{}:{}", group_id, date.clone().unwrap_or_default())
                 } else {
                     format!(

@@ -7,7 +7,7 @@ function App() {
   const [dateFilter, setDateFilter] = useState("");
   const [searchText, setSearchText] = useState("");
   const [groupMode, setGroupMode] = useState<
-    "prompt" | "prompt_date" | "date"
+    "prompt" | "prompt_date" | "date_prompt" | "date"
   >("prompt");
   const [groups, setGroups] = useState<GroupItem[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
@@ -71,7 +71,7 @@ function App() {
   }, [groups, images.length, selectedGroupId, selectedImageIndex]);
 
   async function refreshGroups(
-    nextMode: "prompt" | "prompt_date" | "date" = groupMode
+    nextMode: "prompt" | "prompt_date" | "date_prompt" | "date" = groupMode
   ) {
     const result = await invoke<GroupItem[]>("list_groups", {
       dateFilter: dateFilter.trim() ? dateFilter.trim() : null,
@@ -174,6 +174,16 @@ function App() {
           </button>
           <button
             type="button"
+            className={groupMode === "date_prompt" ? "mode active" : "mode"}
+            onClick={() => {
+              setGroupMode("date_prompt");
+              void refreshGroups("date_prompt");
+            }}
+          >
+            Date + Prompt
+          </button>
+          <button
+            type="button"
             className={groupMode === "date" ? "mode active" : "mode"}
             onClick={() => {
               setGroupMode("date");
@@ -209,6 +219,8 @@ function App() {
                       ? "Prompt"
                       : group.group_type === "prompt_date"
                       ? "Prompt + Date"
+                      : group.group_type === "date_prompt"
+                      ? "Date + Prompt"
                       : group.group_type === "date"
                       ? "Date"
                       : "Batch"}{" "}
