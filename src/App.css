@@ -129,6 +129,7 @@ button:hover {
 
 .workspace {
   flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: 280px 1fr;
   gap: 20px;
@@ -141,6 +142,7 @@ button:hover {
   gap: 12px;
   overflow: auto;
   padding-right: 4px;
+  min-height: 0;
 }
 
 .group {
@@ -197,6 +199,9 @@ button:hover {
   gap: 16px;
   overflow: auto;
   padding: 8px 8px 24px 0;
+  min-height: 0;
+  align-content: start;
+  grid-auto-rows: min-content;
 }
 
 .image {
@@ -204,6 +209,7 @@ button:hover {
   background: transparent;
   padding: 0;
   text-align: left;
+  align-self: start;
 }
 
 .image img {

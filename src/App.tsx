@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import "./App.css";
@@ -20,6 +20,8 @@ function App() {
   const [status, setStatus] = useState("");
   const [recentRoots, setRecentRoots] = useState<string[]>([]);
   const [autoScanned, setAutoScanned] = useState(false);
+  const groupRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const imageRefs = useRef<Record<number, HTMLButtonElement | null>>({});
 
   useEffect(() => {
     if (selectedGroupId === null) {
@@ -36,23 +38,53 @@ function App() {
   }, [selectedGroupId]);
 
   useEffect(() => {
+    if (selectedGroupId) {
+      const node = groupRefs.current[selectedGroupId];
+      if (node) {
+        node.scrollIntoView({ block: "center" });
+      }
+    }
+  }, [selectedGroupId]);
+
+  useEffect(() => {
+    if (selectedImageIndex !== null) {
+      const node = imageRefs.current[selectedImageIndex];
+      if (node) {
+        node.scrollIntoView({ block: "center", inline: "center" });
+      }
+    }
+  }, [selectedImageIndex, images.length]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
       if (event.key === "Escape") {
         setViewerOpen(false);
         return;
       }
       if (selectedImageIndex === null) return;
       if (event.key === "ArrowRight") {
+        event.preventDefault();
         setSelectedImageIndex((index) => {
           if (index === null) return null;
           return Math.min(images.length - 1, index + 1);
         });
       } else if (event.key === "ArrowLeft") {
+        event.preventDefault();
         setSelectedImageIndex((index) => {
           if (index === null) return null;
           return Math.max(0, index - 1);
         });
       } else if (event.key === "ArrowDown") {
+        event.preventDefault();
         const currentIndex = groups.findIndex(
           (group) => group.id === selectedGroupId
         );
@@ -60,11 +92,17 @@ function App() {
           setSelectedGroupId(groups[currentIndex + 1].id);
         }
       } else if (event.key === "ArrowUp") {
+        event.preventDefault();
         const currentIndex = groups.findIndex(
           (group) => group.id === selectedGroupId
         );
         if (currentIndex > 0) {
           setSelectedGroupId(groups[currentIndex - 1].id);
+        }
+      } else if (event.key === "Enter") {
+        event.preventDefault();
+        if (images[selectedImageIndex]) {
+          setViewerOpen(true);
         }
       }
     };
@@ -288,6 +326,9 @@ function App() {
                 className={
                   group.id === selectedGroupId ? "group active" : "group"
                 }
+                ref={(node) => {
+                  groupRefs.current[group.id] = node;
+                }}
                 onClick={() => setSelectedGroupId(group.id)}
               >
                 <img src={thumbSrc} alt={`Group ${group.id}`} />
@@ -327,6 +368,9 @@ function App() {
                 className={
                   index === selectedImageIndex ? "image active" : "image"
                 }
+                ref={(node) => {
+                  imageRefs.current[index] = node;
+                }}
                 onClick={() => {
                   setSelectedImageIndex(index);
                   setViewerOpen(true);
