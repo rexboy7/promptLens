@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
 import "./App.css";
 
@@ -20,6 +21,8 @@ function App() {
   const [status, setStatus] = useState("");
   const [recentRoots, setRecentRoots] = useState<string[]>([]);
   const [autoScanned, setAutoScanned] = useState(false);
+  const viewerRef = useRef<HTMLDivElement | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const groupRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const imageRefs = useRef<Record<number, HTMLButtonElement | null>>({});
 
@@ -203,6 +206,17 @@ function App() {
     }
   }
 
+  function handleRootChange(value: string) {
+    setRootPath(value);
+  }
+
+  async function toggleFullscreen() {
+    const win = getCurrentWindow();
+    const next = !isFullscreen;
+    await win.setFullscreen(next);
+    setIsFullscreen(next);
+  }
+
   async function extractPrompts() {
     setStatus("Extracting prompts...");
     try {
@@ -226,10 +240,26 @@ function App() {
         <div className="controls">
           <input
             value={rootPath}
-            onChange={(event) => setRootPath(event.currentTarget.value)}
+            onChange={(event) => handleRootChange(event.currentTarget.value)}
             placeholder="Root folder path (e.g. /Users/me/Images)"
             list="recent-roots"
           />
+          {recentRoots.length > 0 && (
+            <select
+              className="recent-select"
+              value=""
+              onChange={(event) => handleRootChange(event.currentTarget.value)}
+            >
+              <option value="" disabled>
+                Recent
+              </option>
+              {recentRoots.map((root) => (
+                <option key={root} value={root}>
+                  {root}
+                </option>
+              ))}
+            </select>
+          )}
           <button type="button" onClick={scanDirectory}>
             Scan
           </button>
@@ -243,22 +273,6 @@ function App() {
           <option key={root} value={root} />
         ))}
       </datalist>
-
-      {recentRoots.length > 0 && (
-        <section className="recent-roots">
-          <span>Recent:</span>
-          {recentRoots.map((root) => (
-            <button
-              key={root}
-              type="button"
-              className="recent-root"
-              onClick={() => setRootPath(root)}
-            >
-              {root}
-            </button>
-          ))}
-        </section>
-      )}
 
       <section className="filters">
         <input
@@ -400,12 +414,26 @@ function App() {
       </section>
 
       {viewerOpen && selectedImageIndex !== null && images[selectedImageIndex] && (
-        <div className="viewer" onClick={() => setViewerOpen(false)}>
+        <div
+          className="viewer"
+          onClick={() => setViewerOpen(false)}
+          ref={viewerRef}
+        >
           <div className="viewer-toolbar" onClick={(event) => event.stopPropagation()}>
             <span>
               {selectedImageIndex + 1} / {images.length}
             </span>
             {selectedGroup?.date && <span>{selectedGroup.date}</span>}
+            <button
+              type="button"
+              className="viewer-toggle"
+              onClick={(event) => {
+                event.stopPropagation();
+                void toggleFullscreen();
+              }}
+            >
+              {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+            </button>
           </div>
           <button
             type="button"
@@ -424,6 +452,7 @@ function App() {
             src={convertFileSrc(images[selectedImageIndex].path)}
             alt="Selected"
             onClick={(event) => event.stopPropagation()}
+            className={isFullscreen ? "viewer-image fullscreen" : "viewer-image"}
           />
           <button
             type="button"
