@@ -6,9 +6,9 @@ function App() {
   const [rootPath, setRootPath] = useState("");
   const [dateFilter, setDateFilter] = useState("");
   const [searchText, setSearchText] = useState("");
-  const [groupMode, setGroupMode] = useState<"prompt" | "prompt_date">(
-    "prompt"
-  );
+  const [groupMode, setGroupMode] = useState<
+    "prompt" | "prompt_date" | "date"
+  >("prompt");
   const [groups, setGroups] = useState<GroupItem[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [images, setImages] = useState<ImageItem[]>([]);
@@ -70,7 +70,9 @@ function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [groups, images.length, selectedGroupId, selectedImageIndex]);
 
-  async function refreshGroups(nextMode: "prompt" | "prompt_date" = groupMode) {
+  async function refreshGroups(
+    nextMode: "prompt" | "prompt_date" | "date" = groupMode
+  ) {
     const result = await invoke<GroupItem[]>("list_groups", {
       dateFilter: dateFilter.trim() ? dateFilter.trim() : null,
       searchText: searchText.trim() ? searchText.trim() : null,
@@ -170,6 +172,16 @@ function App() {
           >
             Prompt + Date
           </button>
+          <button
+            type="button"
+            className={groupMode === "date" ? "mode active" : "mode"}
+            onClick={() => {
+              setGroupMode("date");
+              void refreshGroups("date");
+            }}
+          >
+            Date
+          </button>
         </div>
         <button type="button" onClick={extractPrompts}>
           Extract Prompts
@@ -197,6 +209,8 @@ function App() {
                       ? "Prompt"
                       : group.group_type === "prompt_date"
                       ? "Prompt + Date"
+                      : group.group_type === "date"
+                      ? "Date"
                       : "Batch"}{" "}
                     • {group.size} images
                   </span>

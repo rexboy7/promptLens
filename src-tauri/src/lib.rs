@@ -383,6 +383,54 @@ fn list_groups(
         .map(|s| format!("%{}%", s))
         .unwrap_or_default();
 
+    if mode == "date" {
+        let mut stmt = conn
+            .prepare(
+                r#"
+                SELECT
+                    'date' AS group_type,
+                    i.date AS group_id,
+                    i.date AS label,
+                    i.date AS date,
+                    COUNT(i.id) AS size,
+                    MIN(i.path) AS representative_path
+                FROM images i
+                WHERE (?1 IS NULL OR i.date = ?1)
+                  AND (?2 IS NULL OR LOWER(i.date) LIKE ?3)
+                GROUP BY i.date
+                ORDER BY i.date DESC
+                "#,
+            )
+            .map_err(|e| e.to_string())?;
+
+        let rows = stmt
+            .query_map(
+                params![
+                    date_filter,
+                    search.as_ref().map(|_| 1),
+                    search_like
+                ],
+                |row| {
+                    let label: String = row.get(2)?;
+                    Ok(GroupItem {
+                        id: format!("d:{}", label),
+                        label,
+                        group_type: row.get(0)?,
+                        date: row.get(3)?,
+                        size: row.get(4)?,
+                        representative_path: row.get(5)?,
+                    })
+                },
+            )
+            .map_err(|e| e.to_string())?;
+
+        let mut groups = Vec::new();
+        for row in rows {
+            groups.push(row.map_err(|e| e.to_string())?);
+        }
+        return Ok(groups);
+    }
+
     let prompt_query = if mode == "prompt_date" {
         r#"
             SELECT
@@ -459,15 +507,20 @@ fn list_groups(
             let group_type: String = row.get(0)?;
             let group_id: i64 = row.get(1)?;
             let label: String = row.get(2)?;
+            let date: Option<String> = row.get(3)?;
             Ok(GroupItem {
-                id: format!(
-                    "{}:{}",
-                    if group_type == "prompt" { "p" } else { "b" },
-                    group_id
-                ),
+                id: if group_type == "prompt_date" {
+                    format!("pd:{}:{}", group_id, date.clone().unwrap_or_default())
+                } else {
+                    format!(
+                        "{}:{}",
+                        if group_type == "prompt" { "p" } else { "b" },
+                        group_id
+                    )
+                },
                 label,
                 group_type,
-                date: row.get(3)?,
+                date,
                 size: row.get(4)?,
                 representative_path: row.get(5)?,
             })
@@ -488,13 +541,21 @@ fn list_images(app: AppHandle, group_id: String) -> Result<Vec<ImageItem>, Strin
     let (group_type, raw_id) = group_id
         .split_once(':')
         .ok_or_else(|| "Invalid group id".to_string())?;
-    let group_numeric = raw_id
-        .parse::<i64>()
-        .map_err(|_| "Invalid group id".to_string())?;
-    let (query, param) = if group_type == "p" {
-        ("WHERE prompt_id = ?1", group_numeric)
+    let (query, params_vec): (&str, Vec<String>) = if group_type == "p" {
+        ("WHERE prompt_id = ?1", vec![raw_id.to_string()])
     } else if group_type == "b" {
-        ("WHERE batch_id = ?1", group_numeric)
+        ("WHERE batch_id = ?1", vec![raw_id.to_string()])
+    } else if group_type == "pd" {
+        let parts: Vec<&str> = group_id.splitn(3, ':').collect();
+        if parts.len() != 3 {
+            return Err("Invalid prompt-date group id".to_string());
+        }
+        (
+            "WHERE prompt_id = ?1 AND date = ?2",
+            vec![parts[1].to_string(), parts[2].to_string()],
+        )
+    } else if group_type == "d" {
+        ("WHERE date = ?1", vec![raw_id.to_string()])
     } else {
         return Err("Unknown group id type".to_string());
     };
@@ -513,7 +574,7 @@ fn list_images(app: AppHandle, group_id: String) -> Result<Vec<ImageItem>, Strin
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
-        .query_map(params![param], |row| {
+        .query_map(rusqlite::params_from_iter(params_vec), |row| {
             Ok(ImageItem {
                 path: row.get(0)?,
                 serial: row.get(1)?,
