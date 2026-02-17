@@ -348,6 +348,13 @@ fn parse_itext_chunk(data: &[u8]) -> Option<String> {
     Some(String::from_utf8_lossy(text_bytes).to_string())
 }
 
+fn extract_positive_prompt(text: &str) -> String {
+    if let Some(index) = text.find("Negative prompt:") {
+        return text[..index].trim().trim_end_matches(',').trim().to_string();
+    }
+    text.trim().trim_end_matches(',').trim().to_string()
+}
+
 #[tauri::command]
 fn scan_directory(app: AppHandle, root_path: String) -> Result<ScanResult, String> {
     let mut conn = open_db(&app)?;
@@ -492,8 +499,9 @@ fn extract_prompts(app: AppHandle) -> Result<PromptResult, String> {
     for (image_id, path) in rows {
         scanned += 1;
         if let Some(prompt) = extract_parameters_from_png(Path::new(&path)) {
-            if !prompt.trim().is_empty() {
-                updates.push((image_id, prompt));
+            let positive = extract_positive_prompt(&prompt);
+            if !positive.is_empty() {
+                updates.push((image_id, positive));
             }
         }
     }
