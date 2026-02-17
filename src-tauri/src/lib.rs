@@ -25,6 +25,7 @@ struct GroupItem {
     id: String,
     label: String,
     group_type: String,
+    date: Option<String>,
     size: i64,
     representative_path: String,
 }
@@ -363,24 +364,66 @@ fn scan_directory(app: AppHandle, root_path: String) -> Result<ScanResult, Strin
 }
 
 #[tauri::command]
-fn list_groups(app: AppHandle, date_filter: Option<String>) -> Result<Vec<GroupItem>, String> {
+fn list_groups(
+    app: AppHandle,
+    date_filter: Option<String>,
+    search_text: Option<String>,
+    group_mode: Option<String>,
+) -> Result<Vec<GroupItem>, String> {
     let conn = open_db(&app)?;
     init_db(&conn)?;
+    let mode = group_mode.unwrap_or_else(|| "prompt".to_string());
+    let search = search_text
+        .unwrap_or_default()
+        .trim()
+        .to_lowercase();
+    let search = if search.is_empty() { None } else { Some(search) };
+    let search_like = search
+        .as_ref()
+        .map(|s| format!("%{}%", s))
+        .unwrap_or_default();
+
+    let prompt_query = if mode == "prompt_date" {
+        r#"
+            SELECT
+                'prompt_date' AS group_type,
+                p.id AS group_id,
+                p.text AS label,
+                i.date AS date,
+                COUNT(i.id) AS size,
+                MIN(i.path) AS representative_path
+            FROM prompts p
+            JOIN images i ON i.prompt_id = p.id
+            WHERE (?1 IS NULL OR i.date = ?1)
+              AND (?2 IS NULL OR LOWER(p.text) LIKE ?3)
+            GROUP BY p.id, i.date
+            "#
+            .to_string()
+    } else {
+        r#"
+            SELECT
+                'prompt' AS group_type,
+                p.id AS group_id,
+                p.text AS label,
+                NULL AS date,
+                COUNT(i.id) AS size,
+                MIN(i.path) AS representative_path
+            FROM prompts p
+            JOIN images i ON i.prompt_id = p.id
+            WHERE (?1 IS NULL OR i.date = ?1)
+              AND (?2 IS NULL OR LOWER(p.text) LIKE ?3)
+            GROUP BY p.id
+            "#
+            .to_string()
+    };
+
     let mut stmt = conn
         .prepare(
-            r#"
-            SELECT group_type, group_id, label, size, representative_path
+            &format!(
+                r#"
+            SELECT group_type, group_id, label, date, size, representative_path
             FROM (
-                SELECT
-                    'prompt' AS group_type,
-                    p.id AS group_id,
-                    p.text AS label,
-                    COUNT(i.id) AS size,
-                    MIN(i.path) AS representative_path
-                FROM prompts p
-                JOIN images i ON i.prompt_id = p.id
-                WHERE (?1 IS NULL OR i.date = ?1)
-                GROUP BY p.id
+                {}
 
                 UNION ALL
 
@@ -388,21 +431,31 @@ fn list_groups(app: AppHandle, date_filter: Option<String>) -> Result<Vec<GroupI
                     'batch' AS group_type,
                     b.id AS group_id,
                     b.date AS label,
+                    b.date AS date,
                     COUNT(i.id) AS size,
                     b.representative_path AS representative_path
                 FROM batches b
                 JOIN images i ON i.batch_id = b.id
                 WHERE i.prompt_id IS NULL
                   AND (?1 IS NULL OR i.date = ?1)
-                GROUP BY b.id
+                  AND (?2 IS NULL OR LOWER(b.date) LIKE ?3)
+                GROUP BY b.id, b.date
             )
             ORDER BY group_type ASC, label DESC
             "#,
+                prompt_query
+            ),
         )
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
-        .query_map(params![date_filter], |row| {
+        .query_map(
+            params![
+                date_filter,
+                search.as_ref().map(|_| 1),
+                search_like
+            ],
+            |row| {
             let group_type: String = row.get(0)?;
             let group_id: i64 = row.get(1)?;
             let label: String = row.get(2)?;
@@ -414,8 +467,9 @@ fn list_groups(app: AppHandle, date_filter: Option<String>) -> Result<Vec<GroupI
                 ),
                 label,
                 group_type,
-                size: row.get(3)?,
-                representative_path: row.get(4)?,
+                date: row.get(3)?,
+                size: row.get(4)?,
+                representative_path: row.get(5)?,
             })
         })
         .map_err(|e| e.to_string())?;

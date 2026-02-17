@@ -67,6 +67,26 @@ body {
   color: #6a5d54;
 }
 
+.mode-toggle {
+  display: inline-flex;
+  border-radius: 999px;
+  background: #efe8df;
+  padding: 4px;
+  gap: 6px;
+}
+
+.mode {
+  background: transparent;
+  color: #2f2a26;
+  border: 1px solid transparent;
+  box-shadow: none;
+}
+
+.mode.active {
+  background: #2f2a26;
+  color: #f7f0ea;
+}
+
 input,
 button {
   border-radius: 12px;
@@ -148,6 +168,11 @@ button:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.group-subtle {
+  color: #8b7b6f;
+  font-size: 0.8rem;
 }
 
 .image-grid {

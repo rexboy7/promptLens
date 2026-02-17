@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import "./App.css";
 
@@ -6,6 +6,9 @@ function App() {
   const [rootPath, setRootPath] = useState("");
   const [dateFilter, setDateFilter] = useState("");
   const [searchText, setSearchText] = useState("");
+  const [groupMode, setGroupMode] = useState<"prompt" | "prompt_date">(
+    "prompt"
+  );
   const [groups, setGroups] = useState<GroupItem[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [images, setImages] = useState<ImageItem[]>([]);
@@ -14,14 +17,6 @@ function App() {
   );
   const [viewerOpen, setViewerOpen] = useState(false);
   const [status, setStatus] = useState("");
-
-  const filteredGroups = useMemo(() => {
-    if (!searchText.trim()) return groups;
-    const lowered = searchText.trim().toLowerCase();
-    return groups.filter((group) =>
-      `${group.label} ${group.size}`.toLowerCase().includes(lowered)
-    );
-  }, [groups, searchText]);
 
   useEffect(() => {
     if (selectedGroupId === null) {
@@ -55,29 +50,31 @@ function App() {
           return Math.max(0, index - 1);
         });
       } else if (event.key === "ArrowDown") {
-        const currentIndex = filteredGroups.findIndex(
+        const currentIndex = groups.findIndex(
           (group) => group.id === selectedGroupId
         );
-        if (currentIndex >= 0 && currentIndex < filteredGroups.length - 1) {
-          setSelectedGroupId(filteredGroups[currentIndex + 1].id);
+        if (currentIndex >= 0 && currentIndex < groups.length - 1) {
+          setSelectedGroupId(groups[currentIndex + 1].id);
         }
       } else if (event.key === "ArrowUp") {
-        const currentIndex = filteredGroups.findIndex(
+        const currentIndex = groups.findIndex(
           (group) => group.id === selectedGroupId
         );
         if (currentIndex > 0) {
-          setSelectedGroupId(filteredGroups[currentIndex - 1].id);
+          setSelectedGroupId(groups[currentIndex - 1].id);
         }
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [filteredGroups, images.length, selectedGroupId, selectedImageIndex]);
+  }, [groups, images.length, selectedGroupId, selectedImageIndex]);
 
-  async function refreshGroups() {
+  async function refreshGroups(nextMode: "prompt" | "prompt_date" = groupMode) {
     const result = await invoke<GroupItem[]>("list_groups", {
       dateFilter: dateFilter.trim() ? dateFilter.trim() : null,
+      searchText: searchText.trim() ? searchText.trim() : null,
+      groupMode: nextMode,
     });
     setGroups(result);
     if (result.length > 0) {
@@ -152,6 +149,28 @@ function App() {
         <button type="button" onClick={refreshGroups}>
           Apply
         </button>
+        <div className="mode-toggle">
+          <button
+            type="button"
+            className={groupMode === "prompt" ? "mode active" : "mode"}
+            onClick={() => {
+              setGroupMode("prompt");
+              void refreshGroups("prompt");
+            }}
+          >
+            Prompt
+          </button>
+          <button
+            type="button"
+            className={groupMode === "prompt_date" ? "mode active" : "mode"}
+            onClick={() => {
+              setGroupMode("prompt_date");
+              void refreshGroups("prompt_date");
+            }}
+          >
+            Prompt + Date
+          </button>
+        </div>
         <button type="button" onClick={extractPrompts}>
           Extract Prompts
         </button>
@@ -160,7 +179,7 @@ function App() {
 
       <section className="workspace">
         <aside className="group-list">
-          {filteredGroups.map((group) => {
+          {groups.map((group) => {
             const thumbSrc = convertFileSrc(group.representative_path);
             return (
               <button
@@ -174,15 +193,22 @@ function App() {
                 <img src={thumbSrc} alt={`Group ${group.id}`} />
                 <div className="group-meta">
                   <span className="group-date">
-                    {group.group_type === "prompt" ? "Prompt" : "Batch"} •{" "}
-                    {group.size} images
+                    {group.group_type === "prompt"
+                      ? "Prompt"
+                      : group.group_type === "prompt_date"
+                      ? "Prompt + Date"
+                      : "Batch"}{" "}
+                    • {group.size} images
                   </span>
                   <span className="group-count">{group.label}</span>
+                  {group.date && (
+                    <span className="group-subtle">{group.date}</span>
+                  )}
                 </div>
               </button>
             );
           })}
-          {filteredGroups.length === 0 && (
+          {groups.length === 0 && (
             <div className="empty">No groups yet. Scan a folder.</div>
           )}
         </aside>
@@ -237,6 +263,7 @@ type GroupItem = {
   id: string;
   label: string;
   group_type: string;
+  date?: string | null;
   size: number;
   representative_path: string;
 };
