@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import "./App.css";
 
 function App() {
@@ -17,6 +18,8 @@ function App() {
   );
   const [viewerOpen, setViewerOpen] = useState(false);
   const [status, setStatus] = useState("");
+  const [recentRoots, setRecentRoots] = useState<string[]>([]);
+  const [autoScanned, setAutoScanned] = useState(false);
 
   useEffect(() => {
     if (selectedGroupId === null) {
@@ -70,6 +73,40 @@ function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [groups, images.length, selectedGroupId, selectedImageIndex]);
 
+  useEffect(() => {
+    const stored = localStorage.getItem("promptlens.recentRoots");
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          const roots = parsed.filter((item) => typeof item === "string");
+          setRecentRoots(roots);
+          if (roots.length > 0) {
+            setRootPath(roots[0]);
+          }
+        }
+      } catch {
+        setRecentRoots([]);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!autoScanned && rootPath.trim()) {
+      setAutoScanned(true);
+      void scanDirectory();
+    }
+  }, [autoScanned, rootPath]);
+
+  function updateRecentRoots(path: string) {
+    const next = [path, ...recentRoots.filter((item) => item !== path)].slice(
+      0,
+      8
+    );
+    setRecentRoots(next);
+    localStorage.setItem("promptlens.recentRoots", JSON.stringify(next));
+  }
+
   async function refreshGroups(
     nextMode: "prompt" | "prompt_date" | "date_prompt" | "date" = groupMode
   ) {
@@ -99,9 +136,21 @@ function App() {
       setStatus(
         `Indexed ${result.total_images} images in ${result.total_batches} groups.`
       );
+      updateRecentRoots(rootPath.trim());
       await refreshGroups();
     } catch (error) {
       setStatus(`Scan failed: ${String(error)}`);
+    }
+  }
+
+  async function browseForRoot() {
+    const selection = await open({
+      multiple: false,
+      directory: true,
+      title: "Select image root folder",
+    });
+    if (typeof selection === "string") {
+      setRootPath(selection);
     }
   }
 
@@ -130,12 +179,37 @@ function App() {
             value={rootPath}
             onChange={(event) => setRootPath(event.currentTarget.value)}
             placeholder="Root folder path (e.g. /Users/me/Images)"
+            list="recent-roots"
           />
           <button type="button" onClick={scanDirectory}>
             Scan
           </button>
+          <button type="button" onClick={browseForRoot}>
+            Browse
+          </button>
         </div>
       </header>
+      <datalist id="recent-roots">
+        {recentRoots.map((root) => (
+          <option key={root} value={root} />
+        ))}
+      </datalist>
+
+      {recentRoots.length > 0 && (
+        <section className="recent-roots">
+          <span>Recent:</span>
+          {recentRoots.map((root) => (
+            <button
+              key={root}
+              type="button"
+              className="recent-root"
+              onClick={() => setRootPath(root)}
+            >
+              {root}
+            </button>
+          ))}
+        </section>
+      )}
 
       <section className="filters">
         <input
