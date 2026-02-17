@@ -110,16 +110,20 @@ function App() {
   async function refreshGroups(
     nextMode: "prompt" | "prompt_date" | "date_prompt" | "date" = groupMode
   ) {
-    const result = await invoke<GroupItem[]>("list_groups", {
-      dateFilter: dateFilter.trim() ? dateFilter.trim() : null,
-      searchText: searchText.trim() ? searchText.trim() : null,
-      groupMode: nextMode,
-    });
-    setGroups(result);
-    if (result.length > 0) {
-      setSelectedGroupId(result[0].id);
-    } else {
-      setSelectedGroupId(null);
+    try {
+      const result = await invoke<GroupItem[]>("list_groups", {
+        dateFilter: dateFilter.trim() ? dateFilter.trim() : null,
+        searchText: searchText.trim() ? searchText.trim() : null,
+        groupMode: nextMode,
+      });
+      setGroups(result);
+      if (result.length > 0) {
+        setSelectedGroupId(result[0].id);
+      } else {
+        setSelectedGroupId(null);
+      }
+    } catch (error) {
+      setStatus(`Group refresh failed: ${String(error)}`);
     }
   }
 
