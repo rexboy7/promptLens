@@ -136,6 +136,13 @@ function App() {
     }
   }, [autoScanned, rootPath]);
 
+  const selectedGroup = groups.find((group) => group.id === selectedGroupId);
+
+  function truncateLabel(text: string, maxLength = 120) {
+    if (text.length <= maxLength) return text;
+    return `${text.slice(0, maxLength).trim()}…`;
+  }
+
   function updateRecentRoots(path: string) {
     const next = [path, ...recentRoots.filter((item) => item !== path)].slice(
       0,
@@ -319,6 +326,7 @@ function App() {
         <aside className="group-list">
           {groups.map((group) => {
             const thumbSrc = convertFileSrc(group.representative_path);
+            const displayLabel = truncateLabel(group.label, 120);
             return (
               <button
                 key={group.id}
@@ -345,7 +353,9 @@ function App() {
                       : "Batch"}{" "}
                     • {group.size} images
                   </span>
-                  <span className="group-count">{group.label}</span>
+                  <span className="group-count" title={group.label}>
+                    {displayLabel}
+                  </span>
                   {group.date && (
                     <span className="group-subtle">{group.date}</span>
                   )}
@@ -391,13 +401,45 @@ function App() {
 
       {viewerOpen && selectedImageIndex !== null && images[selectedImageIndex] && (
         <div className="viewer" onClick={() => setViewerOpen(false)}>
+          <div className="viewer-toolbar" onClick={(event) => event.stopPropagation()}>
+            <span>
+              {selectedImageIndex + 1} / {images.length}
+            </span>
+            {selectedGroup?.date && <span>{selectedGroup.date}</span>}
+          </div>
+          <button
+            type="button"
+            className="viewer-nav prev"
+            onClick={(event) => {
+              event.stopPropagation();
+              setSelectedImageIndex((index) =>
+                index === null ? null : Math.max(0, index - 1)
+              );
+            }}
+            disabled={selectedImageIndex === 0}
+          >
+            Prev
+          </button>
           <img
             src={convertFileSrc(images[selectedImageIndex].path)}
             alt="Selected"
             onClick={(event) => event.stopPropagation()}
           />
+          <button
+            type="button"
+            className="viewer-nav next"
+            onClick={(event) => {
+              event.stopPropagation();
+              setSelectedImageIndex((index) =>
+                index === null ? null : Math.min(images.length - 1, index + 1)
+              );
+            }}
+            disabled={selectedImageIndex >= images.length - 1}
+          >
+            Next
+          </button>
           <div className="viewer-hint">
-            Arrow keys: prev/next image, up/down group, Esc to close
+            Arrow keys: prev/next image, up/down group, Enter to open, Esc to close
           </div>
         </div>
       )}
