@@ -133,11 +133,7 @@ function App() {
         }
       } else if (event.key === "s" || event.key === "S") {
         event.preventDefault();
-        if (event.metaKey) {
-          toggleSlideshowAcrossGroups();
-        } else {
-          toggleSlideshowInGroup();
-        }
+        toggleSlideshow({ acrossGroups: event.metaKey });
       } else if (event.key === "d" || event.key === "D") {
         if (!event.metaKey) return;
         event.preventDefault();
@@ -151,7 +147,7 @@ function App() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [groups, images.length, selectedGroupId, selectedImageIndex]);
+  }, [groups, images.length, selectedGroupId, selectedImageIndex, isFullscreen]);
 
   useEffect(() => {
     const stored = localStorage.getItem("promptlens.recentRoots");
@@ -287,7 +283,7 @@ function App() {
     }
   }
 
-  function toggleSlideshowInGroup({ acrossGroups = false } = {}) {
+  function toggleSlideshow({ acrossGroups = false } = {}) {
     if (slideshowRef.current) {
       stopSlideshowAndCloseViewer();
       return;
@@ -295,31 +291,8 @@ function App() {
     if (images.length === 0) return;
     randomImageInGroup();
     slideshowRef.current = window.setInterval(() => {
-      setSelectedImageIndex(() => Math.floor(Math.random() * images.length));
-      setViewerOpen(true);
+      acrossGroups ? randomCategoryImage() : randomImageInGroup();
     }, 2000);
-  }
-
-  function toggleSlideshowAcrossGroups() {
-    if (slideshowRef.current) {
-      stopSlideshowAndCloseViewer();
-      return;
-    }
-    if (groups.length === 0) return;
-    void randomCategoryImage();
-    slideshowRef.current = window.setInterval(async () => {
-      const nextGroup = groups[Math.floor(Math.random() * groups.length)];
-      const result = await invoke<ImageItem[]>("list_images", {
-        groupId: nextGroup.id,
-      });
-      if (result.length === 0) return;
-      suppressGroupFetchRef.current = true;
-      setSelectedGroupId(nextGroup.id);
-      setImages(result);
-      const nextIndex = Math.floor(Math.random() * result.length);
-      setSelectedImageIndex(nextIndex);
-      setViewerOpen(true);
-    }, 2500);
   }
 
   async function deleteCurrentImage() {
