@@ -23,8 +23,6 @@ function App() {
   const [autoScanned, setAutoScanned] = useState(false);
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [slideshowRunning, setSlideshowRunning] = useState(false);
-  const slideshowRunningRef = useRef(false);
   const slideshowRef = useRef<number | null>(null);
   const suppressGroupFetchRef = useRef(false);
   const groupRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -78,8 +76,7 @@ function App() {
         return;
       }
       if (event.key === "Escape") {
-        setViewerOpen(false);
-        stopSlideshow();
+        stopSlideshowAndCloseViewer();
         return;
       }
       if (event.repeat) {
@@ -259,13 +256,12 @@ function App() {
     setIsFullscreen(next);
   }
 
-  function stopSlideshow() {
+  function stopSlideshowAndCloseViewer() {
     if (slideshowRef.current) {
       window.clearInterval(slideshowRef.current);
       slideshowRef.current = null;
     }
-    slideshowRunningRef.current = false;
-    setSlideshowRunning(false);
+    setViewerOpen(false);
   }
 
   function randomImageInGroup() {
@@ -291,15 +287,12 @@ function App() {
     }
   }
 
-  function toggleSlideshowInGroup() {
-    if (slideshowRunningRef.current) {
-      stopSlideshow();
+  function toggleSlideshowInGroup({ acrossGroups = false } = {}) {
+    if (slideshowRef.current) {
+      stopSlideshowAndCloseViewer();
       return;
     }
     if (images.length === 0) return;
-    stopSlideshow();
-    slideshowRunningRef.current = true;
-    setSlideshowRunning(true);
     randomImageInGroup();
     slideshowRef.current = window.setInterval(() => {
       setSelectedImageIndex(() => Math.floor(Math.random() * images.length));
@@ -308,14 +301,11 @@ function App() {
   }
 
   function toggleSlideshowAcrossGroups() {
-    if (slideshowRunningRef.current) {
-      stopSlideshow();
+    if (slideshowRef.current) {
+      stopSlideshowAndCloseViewer();
       return;
     }
     if (groups.length === 0) return;
-    stopSlideshow();
-    slideshowRunningRef.current = true;
-    setSlideshowRunning(true);
     void randomCategoryImage();
     slideshowRef.current = window.setInterval(async () => {
       const nextGroup = groups[Math.floor(Math.random() * groups.length)];
@@ -551,8 +541,7 @@ function App() {
         <div
           className="viewer"
           onClick={() => {
-            setViewerOpen(false);
-            stopSlideshow();
+            stopSlideshowAndCloseViewer();
           }}
           ref={viewerRef}
         >
