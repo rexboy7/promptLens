@@ -23,12 +23,20 @@ function App() {
   const [autoScanned, setAutoScanned] = useState(false);
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [slideshowRunning, setSlideshowRunning] = useState(false);
+  const slideshowRunningRef = useRef(false);
+  const slideshowRef = useRef<number | null>(null);
+  const suppressGroupFetchRef = useRef(false);
   const groupRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const imageRefs = useRef<Record<number, HTMLButtonElement | null>>({});
 
   useEffect(() => {
     if (selectedGroupId === null) {
       setImages([]);
+      return;
+    }
+    if (suppressGroupFetchRef.current) {
+      suppressGroupFetchRef.current = false;
       return;
     }
     void (async () => {
@@ -71,22 +79,33 @@ function App() {
       }
       if (event.key === "Escape") {
         setViewerOpen(false);
+        stopSlideshow();
         return;
       }
-      if (selectedImageIndex === null) return;
+      if (event.repeat) {
+        return;
+      }
+      if (event.key === "f" || event.key === "F") {
+        event.preventDefault();
+        void toggleFullscreen();
+        return;
+      }
       if (event.key === "ArrowRight") {
+        if (selectedImageIndex === null) return;
         event.preventDefault();
         setSelectedImageIndex((index) => {
           if (index === null) return null;
           return Math.min(images.length - 1, index + 1);
         });
       } else if (event.key === "ArrowLeft") {
+        if (selectedImageIndex === null) return;
         event.preventDefault();
         setSelectedImageIndex((index) => {
           if (index === null) return null;
           return Math.max(0, index - 1);
         });
       } else if (event.key === "ArrowDown") {
+        if (!event.metaKey) return;
         event.preventDefault();
         const currentIndex = groups.findIndex(
           (group) => group.id === selectedGroupId
@@ -95,6 +114,7 @@ function App() {
           setSelectedGroupId(groups[currentIndex + 1].id);
         }
       } else if (event.key === "ArrowUp") {
+        if (!event.metaKey) return;
         event.preventDefault();
         const currentIndex = groups.findIndex(
           (group) => group.id === selectedGroupId
@@ -104,8 +124,30 @@ function App() {
         }
       } else if (event.key === "Enter") {
         event.preventDefault();
-        if (images[selectedImageIndex]) {
+        if (selectedImageIndex !== null && images[selectedImageIndex]) {
           setViewerOpen(true);
+        }
+      } else if (event.key === "r" || event.key === "R") {
+        event.preventDefault();
+        if (event.metaKey) {
+          void randomCategoryImage();
+        } else {
+          randomImageInGroup();
+        }
+      } else if (event.key === "s" || event.key === "S") {
+        event.preventDefault();
+        if (event.metaKey) {
+          toggleSlideshowAcrossGroups();
+        } else {
+          toggleSlideshowInGroup();
+        }
+      } else if (event.key === "d" || event.key === "D") {
+        if (!event.metaKey) return;
+        event.preventDefault();
+        if (event.altKey) {
+          void deleteCurrentGroup();
+        } else {
+          void deleteCurrentImage();
         }
       }
     };
@@ -215,6 +257,98 @@ function App() {
     const next = !isFullscreen;
     await win.setFullscreen(next);
     setIsFullscreen(next);
+  }
+
+  function stopSlideshow() {
+    if (slideshowRef.current) {
+      window.clearInterval(slideshowRef.current);
+      slideshowRef.current = null;
+    }
+    slideshowRunningRef.current = false;
+    setSlideshowRunning(false);
+  }
+
+  function randomImageInGroup() {
+    if (images.length === 0) return;
+    const nextIndex = Math.floor(Math.random() * images.length);
+    setSelectedImageIndex(nextIndex);
+    setViewerOpen(true);
+  }
+
+  async function randomCategoryImage() {
+    if (groups.length === 0) return;
+    const nextGroup = groups[Math.floor(Math.random() * groups.length)];
+    suppressGroupFetchRef.current = true;
+    setSelectedGroupId(nextGroup.id);
+    const result = await invoke<ImageItem[]>("list_images", {
+      groupId: nextGroup.id,
+    });
+    setImages(result);
+    if (result.length > 0) {
+      const nextIndex = Math.floor(Math.random() * result.length);
+      setSelectedImageIndex(nextIndex);
+      setViewerOpen(true);
+    }
+  }
+
+  function toggleSlideshowInGroup() {
+    if (slideshowRunningRef.current) {
+      stopSlideshow();
+      return;
+    }
+    if (images.length === 0) return;
+    stopSlideshow();
+    slideshowRunningRef.current = true;
+    setSlideshowRunning(true);
+    randomImageInGroup();
+    slideshowRef.current = window.setInterval(() => {
+      setSelectedImageIndex(() => Math.floor(Math.random() * images.length));
+      setViewerOpen(true);
+    }, 2000);
+  }
+
+  function toggleSlideshowAcrossGroups() {
+    if (slideshowRunningRef.current) {
+      stopSlideshow();
+      return;
+    }
+    if (groups.length === 0) return;
+    stopSlideshow();
+    slideshowRunningRef.current = true;
+    setSlideshowRunning(true);
+    void randomCategoryImage();
+    slideshowRef.current = window.setInterval(async () => {
+      const nextGroup = groups[Math.floor(Math.random() * groups.length)];
+      const result = await invoke<ImageItem[]>("list_images", {
+        groupId: nextGroup.id,
+      });
+      if (result.length === 0) return;
+      suppressGroupFetchRef.current = true;
+      setSelectedGroupId(nextGroup.id);
+      setImages(result);
+      const nextIndex = Math.floor(Math.random() * result.length);
+      setSelectedImageIndex(nextIndex);
+      setViewerOpen(true);
+    }, 2500);
+  }
+
+  async function deleteCurrentImage() {
+    if (selectedImageIndex === null || !images[selectedImageIndex]) return;
+    const target = images[selectedImageIndex];
+    if (!window.confirm("Delete this image from disk?")) return;
+    await invoke("delete_image", { imagePath: target.path });
+    setStatus("Image deleted.");
+    await refreshGroups();
+  }
+
+  async function deleteCurrentGroup() {
+    if (!selectedGroupId) return;
+    if (!window.confirm("Delete all images in this category?")) return;
+    const deleted = await invoke<number>("delete_group", {
+      groupId: selectedGroupId,
+    });
+    setStatus(`Deleted ${deleted} images.`);
+    await refreshGroups();
   }
 
   async function extractPrompts() {
@@ -416,7 +550,10 @@ function App() {
       {viewerOpen && selectedImageIndex !== null && images[selectedImageIndex] && (
         <div
           className="viewer"
-          onClick={() => setViewerOpen(false)}
+          onClick={() => {
+            setViewerOpen(false);
+            stopSlideshow();
+          }}
           ref={viewerRef}
         >
           <div className="viewer-toolbar" onClick={(event) => event.stopPropagation()}>
