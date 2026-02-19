@@ -1,13 +1,13 @@
+import { GalleryProvider, useGallery } from "./app/GalleryContext";
 import Toolbar from "./components/Toolbar";
 import Filters from "./components/Filters/Filters";
 import GroupList from "./components/GroupList/GroupList";
 import ImageGrid from "./components/ImageGrid/ImageGrid";
 import Viewer from "./components/Viewer/Viewer";
 import RootSelector from "./components/RootSelector/RootSelector";
-import { useGalleryController } from "./app/useGalleryController";
 import "./App.css";
 
-function App() {
+function AppContent() {
   const {
     rootPath,
     dateFilter,
@@ -52,7 +52,7 @@ function App() {
     setSelectedGroupId,
     setSelectedImageIndex,
     setViewerOpen,
-  } = useGalleryController();
+  } = useGallery();
 
   return (
     <main className="app-shell">
@@ -140,4 +140,10 @@ function App() {
   );
 }
 
-export default App;
+export default function App() {
+  return (
+    <GalleryProvider>
+      <AppContent />
+    </GalleryProvider>
+  );
+}
