@@ -3,6 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useKeyboard } from "../hooks/useKeyboard";
 import { useMenuEvents } from "../hooks/useMenuEvents";
+import type { Command } from "./commands";
 import {
   deleteGroup,
   deleteImage,
@@ -103,32 +104,56 @@ export function useGalleryController() {
     }
   };
 
+  const dispatch = (command: Command) => {
+    switch (command.type) {
+      case "ESCAPE":
+        stopSlideshowAndCloseViewer();
+        break;
+      case "TOGGLE_FULLSCREEN":
+        void toggleFullscreen();
+        break;
+      case "NEXT_IMAGE":
+        goNextImage();
+        break;
+      case "PREV_IMAGE":
+        goPrevImage();
+        break;
+      case "NEXT_GROUP":
+        goNextGroup();
+        break;
+      case "PREV_GROUP":
+        goPrevGroup();
+        break;
+      case "OPEN_VIEWER":
+        openViewer();
+        break;
+      case "RANDOM_IMAGE":
+        randomImageInGroup();
+        break;
+      case "RANDOM_ANY":
+        void randomCategoryImage();
+        break;
+      case "TOGGLE_SLIDESHOW":
+        toggleSlideshow({ acrossGroups: command.acrossGroups });
+        break;
+      case "DELETE_IMAGE":
+        void deleteCurrentImage();
+        break;
+      case "DELETE_GROUP":
+        void deleteCurrentGroup();
+        break;
+      case "EXTRACT_PROMPTS":
+        void extractPromptsAction();
+        break;
+    }
+  };
+
   useKeyboard({
-    onEscape: stopSlideshowAndCloseViewer,
-    onToggleFullscreen: () => void toggleFullscreen(),
-    onNextImage: goNextImage,
-    onPrevImage: goPrevImage,
-    onNextGroup: goNextGroup,
-    onPrevGroup: goPrevGroup,
-    onOpenViewer: openViewer,
-    onRandomImage: randomImageInGroup,
-    onRandomAny: () => void randomCategoryImage(),
-    onToggleSlideshow: (across) => toggleSlideshow({ acrossGroups: across }),
-    onDeleteImage: () => void deleteCurrentImage(),
-    onDeleteGroup: () => void deleteCurrentGroup(),
+    dispatch,
     canNavigateImages: selectedImageIndex !== null,
   });
 
-  useMenuEvents({
-    onRandomImage: randomImageInGroup,
-    onRandomAny: () => void randomCategoryImage(),
-    onSlideshow: () => toggleSlideshow({ acrossGroups: false }),
-    onSlideshowAny: () => toggleSlideshow({ acrossGroups: true }),
-    onDeleteImage: () => void deleteCurrentImage(),
-    onDeleteGroup: () => void deleteCurrentGroup(),
-    onToggleFullscreen: () => void toggleFullscreen(),
-    onExtractPrompts: () => void extractPromptsAction(),
-  });
+  useMenuEvents({ dispatch });
 
   useEffect(() => {
     const stored = localStorage.getItem("promptlens.recentRoots");
@@ -354,5 +379,6 @@ export function useGalleryController() {
     goPrevImage,
     goNextImage,
     openViewer,
+    dispatch,
   };
 }

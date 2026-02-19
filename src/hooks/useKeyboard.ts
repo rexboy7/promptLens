@@ -1,36 +1,12 @@
 import { useEffect } from "react";
+import type { Command } from "../app/commands";
 
 type KeyboardHandlers = {
-  onEscape: () => void;
-  onToggleFullscreen: () => void;
-  onNextImage: () => void;
-  onPrevImage: () => void;
-  onNextGroup: () => void;
-  onPrevGroup: () => void;
-  onOpenViewer: () => void;
-  onRandomImage: () => void;
-  onRandomAny: () => void;
-  onToggleSlideshow: (acrossGroups: boolean) => void;
-  onDeleteImage: () => void;
-  onDeleteGroup: () => void;
+  dispatch: (command: Command) => void;
   canNavigateImages: boolean;
 };
 
-export function useKeyboard({
-  onEscape,
-  onToggleFullscreen,
-  onNextImage,
-  onPrevImage,
-  onNextGroup,
-  onPrevGroup,
-  onOpenViewer,
-  onRandomImage,
-  onRandomAny,
-  onToggleSlideshow,
-  onDeleteImage,
-  onDeleteGroup,
-  canNavigateImages,
-}: KeyboardHandlers) {
+export function useKeyboard({ dispatch, canNavigateImages }: KeyboardHandlers) {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -43,7 +19,7 @@ export function useKeyboard({
         return;
       }
       if (event.key === "Escape") {
-        onEscape();
+        dispatch({ type: "ESCAPE" });
         return;
       }
       if (event.repeat) {
@@ -51,64 +27,50 @@ export function useKeyboard({
       }
       if (event.key === "f" || event.key === "F") {
         event.preventDefault();
-        onToggleFullscreen();
+        dispatch({ type: "TOGGLE_FULLSCREEN" });
         return;
       }
       if (event.key === "ArrowRight") {
         if (!canNavigateImages) return;
         event.preventDefault();
-        onNextImage();
+        dispatch({ type: "NEXT_IMAGE" });
       } else if (event.key === "ArrowLeft") {
         if (!canNavigateImages) return;
         event.preventDefault();
-        onPrevImage();
+        dispatch({ type: "PREV_IMAGE" });
       } else if (event.key === "ArrowDown") {
         if (!event.metaKey) return;
         event.preventDefault();
-        onNextGroup();
+        dispatch({ type: "NEXT_GROUP" });
       } else if (event.key === "ArrowUp") {
         if (!event.metaKey) return;
         event.preventDefault();
-        onPrevGroup();
+        dispatch({ type: "PREV_GROUP" });
       } else if (event.key === "Enter") {
         event.preventDefault();
-        onOpenViewer();
+        dispatch({ type: "OPEN_VIEWER" });
       } else if (event.key === "r" || event.key === "R") {
         event.preventDefault();
         if (event.metaKey) {
-          onRandomAny();
+          dispatch({ type: "RANDOM_ANY" });
         } else {
-          onRandomImage();
+          dispatch({ type: "RANDOM_IMAGE" });
         }
       } else if (event.key === "s" || event.key === "S") {
         event.preventDefault();
-        onToggleSlideshow(event.metaKey);
+        dispatch({ type: "TOGGLE_SLIDESHOW", acrossGroups: event.metaKey });
       } else if (event.key === "d" || event.key === "D") {
         if (!event.metaKey) return;
         event.preventDefault();
         if (event.altKey) {
-          onDeleteGroup();
+          dispatch({ type: "DELETE_GROUP" });
         } else {
-          onDeleteImage();
+          dispatch({ type: "DELETE_IMAGE" });
         }
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [
-    onEscape,
-    onToggleFullscreen,
-    onNextImage,
-    onPrevImage,
-    onNextGroup,
-    onPrevGroup,
-    onOpenViewer,
-    onRandomImage,
-    onRandomAny,
-    onToggleSlideshow,
-    onDeleteImage,
-    onDeleteGroup,
-    canNavigateImages,
-  ]);
+  }, [dispatch, canNavigateImages]);
 }

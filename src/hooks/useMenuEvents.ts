@@ -1,59 +1,35 @@
 import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
+import type { Command } from "../app/commands";
 
 type MenuHandlers = {
-  onRandomImage: () => void;
-  onRandomAny: () => void;
-  onSlideshow: () => void;
-  onSlideshowAny: () => void;
-  onDeleteImage: () => void;
-  onDeleteGroup: () => void;
-  onToggleFullscreen: () => void;
-  onExtractPrompts: () => void;
+  dispatch: (command: Command) => void;
 };
 
-export function useMenuEvents({
-  onRandomImage,
-  onRandomAny,
-  onSlideshow,
-  onSlideshowAny,
-  onDeleteImage,
-  onDeleteGroup,
-  onToggleFullscreen,
-  onExtractPrompts,
-}: MenuHandlers) {
+export function useMenuEvents({ dispatch }: MenuHandlers) {
   useEffect(() => {
     const unlistenPromise = listen<string>("menu-action", (event) => {
       const action = event.payload;
       if (action === "random_image") {
-        onRandomImage();
+        dispatch({ type: "RANDOM_IMAGE" });
       } else if (action === "random_any") {
-        onRandomAny();
+        dispatch({ type: "RANDOM_ANY" });
       } else if (action === "slideshow") {
-        onSlideshow();
+        dispatch({ type: "TOGGLE_SLIDESHOW", acrossGroups: false });
       } else if (action === "slideshow_any") {
-        onSlideshowAny();
+        dispatch({ type: "TOGGLE_SLIDESHOW", acrossGroups: true });
       } else if (action === "delete_image") {
-        onDeleteImage();
+        dispatch({ type: "DELETE_IMAGE" });
       } else if (action === "delete_group") {
-        onDeleteGroup();
+        dispatch({ type: "DELETE_GROUP" });
       } else if (action === "fullscreen") {
-        onToggleFullscreen();
+        dispatch({ type: "TOGGLE_FULLSCREEN" });
       } else if (action === "extract_prompts") {
-        onExtractPrompts();
+        dispatch({ type: "EXTRACT_PROMPTS" });
       }
     });
     return () => {
       void unlistenPromise.then((unlisten) => unlisten());
     };
-  }, [
-    onRandomImage,
-    onRandomAny,
-    onSlideshow,
-    onSlideshowAny,
-    onDeleteImage,
-    onDeleteGroup,
-    onToggleFullscreen,
-    onExtractPrompts,
-  ]);
+  }, [dispatch]);
 }

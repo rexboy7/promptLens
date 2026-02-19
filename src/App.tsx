@@ -3,6 +3,7 @@ import Filters from "./components/Filters/Filters";
 import GroupList from "./components/GroupList/GroupList";
 import ImageGrid from "./components/ImageGrid/ImageGrid";
 import Viewer from "./components/Viewer/Viewer";
+import RootSelector from "./components/RootSelector/RootSelector";
 import { useGalleryController } from "./app/useGalleryController";
 import "./App.css";
 
@@ -80,42 +81,14 @@ function App() {
           <h1>PromptGallery</h1>
           <p className="subtitle">Batch-first AI image viewer</p>
         </div>
-        <div className="controls">
-          <input
-            value={rootPath}
-            onChange={(event) => handleRootChange(event.currentTarget.value)}
-            placeholder="Root folder path (e.g. /Users/me/Images)"
-            list="recent-roots"
-          />
-          {recentRoots.length > 0 && (
-            <select
-              className="recent-select"
-              value=""
-              onChange={(event) => handleRootChange(event.currentTarget.value)}
-            >
-              <option value="" disabled>
-                Recent
-              </option>
-              {recentRoots.map((root) => (
-                <option key={root} value={root}>
-                  {root}
-                </option>
-              ))}
-            </select>
-          )}
-          <button type="button" onClick={scanDirectoryAction}>
-            Scan
-          </button>
-          <button type="button" onClick={browseForRoot}>
-            Browse
-          </button>
-        </div>
+        <RootSelector
+          rootPath={rootPath}
+          recentRoots={recentRoots}
+          onRootChange={handleRootChange}
+          onScan={scanDirectoryAction}
+          onBrowse={browseForRoot}
+        />
       </header>
-      <datalist id="recent-roots">
-        {recentRoots.map((root) => (
-          <option key={root} value={root} />
-        ))}
-      </datalist>
 
       <Filters
         searchText={searchText}
