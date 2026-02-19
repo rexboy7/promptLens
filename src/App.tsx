@@ -66,6 +66,44 @@ function App() {
     }
   }, [selectedImageIndex, images.length]);
 
+  const goPrevGroup = () => {
+    const currentIndex = groups.findIndex(
+      (group) => group.id === selectedGroupId
+    );
+    if (currentIndex > 0) {
+      setSelectedGroupId(groups[currentIndex - 1].id);
+    }
+  };
+
+  const goNextGroup = () => {
+    const currentIndex = groups.findIndex(
+      (group) => group.id === selectedGroupId
+    );
+    if (currentIndex >= 0 && currentIndex < groups.length - 1) {
+      setSelectedGroupId(groups[currentIndex + 1].id);
+    }
+  };
+
+  const goPrevImage = () => {
+    setSelectedImageIndex((index) => {
+      if (index === null) return null;
+      return Math.max(0, index - 1);
+    });
+  };
+
+  const goNextImage = () => {
+    setSelectedImageIndex((index) => {
+      if (index === null) return null;
+      return Math.min(images.length - 1, index + 1);
+    });
+  };
+
+  const openViewer = () => {
+    if (selectedImageIndex !== null && images[selectedImageIndex]) {
+      setViewerOpen(true);
+    }
+  };
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -92,40 +130,22 @@ function App() {
       if (event.key === "ArrowRight") {
         if (selectedImageIndex === null) return;
         event.preventDefault();
-        setSelectedImageIndex((index) => {
-          if (index === null) return null;
-          return Math.min(images.length - 1, index + 1);
-        });
+        goNextImage();
       } else if (event.key === "ArrowLeft") {
         if (selectedImageIndex === null) return;
         event.preventDefault();
-        setSelectedImageIndex((index) => {
-          if (index === null) return null;
-          return Math.max(0, index - 1);
-        });
+        goPrevImage();
       } else if (event.key === "ArrowDown") {
         if (!event.metaKey) return;
         event.preventDefault();
-        const currentIndex = groups.findIndex(
-          (group) => group.id === selectedGroupId
-        );
-        if (currentIndex >= 0 && currentIndex < groups.length - 1) {
-          setSelectedGroupId(groups[currentIndex + 1].id);
-        }
+        goNextGroup();
       } else if (event.key === "ArrowUp") {
         if (!event.metaKey) return;
         event.preventDefault();
-        const currentIndex = groups.findIndex(
-          (group) => group.id === selectedGroupId
-        );
-        if (currentIndex > 0) {
-          setSelectedGroupId(groups[currentIndex - 1].id);
-        }
+        goPrevGroup();
       } else if (event.key === "Enter") {
         event.preventDefault();
-        if (selectedImageIndex !== null && images[selectedImageIndex]) {
-          setViewerOpen(true);
-        }
+        openViewer();
       } else if (event.key === "r" || event.key === "R") {
         event.preventDefault();
         if (event.metaKey) {
@@ -460,39 +480,11 @@ function App() {
         onDeleteImage={() => void deleteCurrentImage()}
         onDeleteGroup={() => void deleteCurrentGroup()}
         onToggleFullscreen={() => void toggleFullscreen()}
-        onPrevGroup={() => {
-          const currentIndex = groups.findIndex(
-            (group) => group.id === selectedGroupId
-          );
-          if (currentIndex > 0) {
-            setSelectedGroupId(groups[currentIndex - 1].id);
-          }
-        }}
-        onNextGroup={() => {
-          const currentIndex = groups.findIndex(
-            (group) => group.id === selectedGroupId
-          );
-          if (currentIndex >= 0 && currentIndex < groups.length - 1) {
-            setSelectedGroupId(groups[currentIndex + 1].id);
-          }
-        }}
-        onPrevImage={() => {
-          setSelectedImageIndex((index) => {
-            if (index === null) return null;
-            return Math.max(0, index - 1);
-          });
-        }}
-        onNextImage={() => {
-          setSelectedImageIndex((index) => {
-            if (index === null) return null;
-            return Math.min(images.length - 1, index + 1);
-          });
-        }}
-        onOpenViewer={() => {
-          if (selectedImageIndex !== null && images[selectedImageIndex]) {
-            setViewerOpen(true);
-          }
-        }}
+        onPrevGroup={goPrevGroup}
+        onNextGroup={goNextGroup}
+        onPrevImage={goPrevImage}
+        onNextImage={goNextImage}
+        onOpenViewer={openViewer}
         onCloseViewer={stopSlideshowAndCloseViewer}
       />
 
