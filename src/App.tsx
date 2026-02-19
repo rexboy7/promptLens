@@ -1,19 +1,26 @@
 import { useEffect, useRef, useState } from "react";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import Toolbar from "./components/Toolbar";
+import {
+  deleteGroup,
+  deleteImage,
+  extractPrompts as extractPromptsApi,
+  listGroups,
+  listImages,
+  scanDirectory as scanDirectoryApi,
+} from "./data/galleryApi";
+import type { Group, GroupMode, ImageItem } from "./data/types";
 import "./App.css";
 
 function App() {
   const [rootPath, setRootPath] = useState("");
   const [dateFilter, setDateFilter] = useState("");
   const [searchText, setSearchText] = useState("");
-  const [groupMode, setGroupMode] = useState<
-    "prompt" | "prompt_date" | "date_prompt" | "date"
-  >("prompt");
-  const [groups, setGroups] = useState<GroupItem[]>([]);
+  const [groupMode, setGroupMode] = useState<GroupMode>("prompt");
+  const [groups, setGroups] = useState<Group[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [images, setImages] = useState<ImageItem[]>([]);
   const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(
@@ -41,9 +48,7 @@ function App() {
       return;
     }
     void (async () => {
-      const result = await invoke<ImageItem[]>("list_images", {
-        groupId: selectedGroupId,
-      });
+      const result = await listImages(selectedGroupId);
       setImages(result);
       setSelectedImageIndex(result.length > 0 ? 0 : null);
     })();
@@ -190,7 +195,7 @@ function App() {
       } else if (action === "fullscreen") {
         void toggleFullscreen();
       } else if (action === "extract_prompts") {
-        void extractPrompts();
+        void extractPromptsAction();
       }
     });
     return () => {
@@ -225,7 +230,7 @@ function App() {
   useEffect(() => {
     if (!autoScanned && rootPath.trim()) {
       setAutoScanned(true);
-      void scanDirectory();
+      void scanDirectoryAction();
     }
   }, [autoScanned, rootPath]);
 
@@ -247,11 +252,9 @@ function App() {
     localStorage.setItem("promptlens.recentRoots", JSON.stringify(next));
   }
 
-  async function refreshGroups(
-    nextMode: "prompt" | "prompt_date" | "date_prompt" | "date" = groupMode
-  ) {
+  async function refreshGroups(nextMode: GroupMode = groupMode) {
     try {
-      const result = await invoke<GroupItem[]>("list_groups", {
+      const result = await listGroups({
         dateFilter: dateFilter.trim() ? dateFilter.trim() : null,
         searchText: searchText.trim() ? searchText.trim() : null,
         groupMode: nextMode,
@@ -267,16 +270,14 @@ function App() {
     }
   }
 
-  async function scanDirectory() {
+  async function scanDirectoryAction() {
     if (!rootPath.trim()) {
       setStatus("Please enter a root folder path.");
       return;
     }
     setStatus("Scanning...");
     try {
-      const result = await invoke<ScanResult>("scan_directory", {
-        rootPath: rootPath.trim(),
-      });
+      const result = await scanDirectoryApi(rootPath.trim());
       setStatus(
         `Indexed ${result.total_images} images in ${result.total_batches} groups.`
       );
@@ -338,9 +339,7 @@ function App() {
     const nextGroup = groups[Math.floor(Math.random() * groups.length)];
     suppressGroupFetchRef.current = true;
     setSelectedGroupId(nextGroup.id);
-    const result = await invoke<ImageItem[]>("list_images", {
-      groupId: nextGroup.id,
-    });
+    const result = await listImages(nextGroup.id);
     setImages(result);
     if (result.length > 0) {
       const nextIndex = Math.floor(Math.random() * result.length);
@@ -366,7 +365,7 @@ function App() {
     if (selectedImageIndex === null || !images[selectedImageIndex]) return;
     const target = images[selectedImageIndex];
     if (!window.confirm("Delete this image from disk?")) return;
-    await invoke("delete_image", { imagePath: target.path });
+    await deleteImage(target.path);
     setStatus("Image deleted.");
     await refreshGroups();
   }
@@ -374,17 +373,15 @@ function App() {
   async function deleteCurrentGroup() {
     if (!selectedGroupId) return;
     if (!window.confirm("Delete all images in this category?")) return;
-    const deleted = await invoke<number>("delete_group", {
-      groupId: selectedGroupId,
-    });
+    const deleted = await deleteGroup(selectedGroupId);
     setStatus(`Deleted ${deleted} images.`);
     await refreshGroups();
   }
 
-  async function extractPrompts() {
+  async function extractPromptsAction() {
     setStatus("Extracting prompts...");
     try {
-      const result = await invoke<PromptResult>("extract_prompts");
+      const result = await extractPromptsApi();
       setStatus(
         `Scanned ${result.scanned} images, updated ${result.updated} prompts.`
       );
@@ -444,7 +441,7 @@ function App() {
               ))}
             </select>
           )}
-          <button type="button" onClick={scanDirectory}>
+          <button type="button" onClick={scanDirectoryAction}>
             Scan
           </button>
           <button type="button" onClick={browseForRoot}>
@@ -514,7 +511,7 @@ function App() {
             Date
           </button>
         </div>
-        <button type="button" onClick={extractPrompts}>
+        <button type="button" onClick={extractPromptsAction}>
           Extract Prompts
         </button>
         <span className="status">{status}</span>
@@ -664,28 +661,3 @@ function App() {
 }
 
 export default App;
-
-type GroupItem = {
-  id: string;
-  label: string;
-  group_type: string;
-  date?: string | null;
-  size: number;
-  representative_path: string;
-};
-
-type ImageItem = {
-  path: string;
-  serial: number;
-  seed: number;
-};
-
-type ScanResult = {
-  total_images: number;
-  total_batches: number;
-};
-
-type PromptResult = {
-  scanned: number;
-  updated: number;
-};
