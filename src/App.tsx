@@ -24,6 +24,7 @@ function App() {
   const [autoScanned, setAutoScanned] = useState(false);
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isSlideshowRunning, setIsSlideshowRunning] = useState(false);
   const slideshowRef = useRef<number | null>(null);
   const suppressGroupFetchRef = useRef(false);
   const groupRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -261,6 +262,15 @@ function App() {
       slideshowRef.current = null;
     }
     setViewerOpen(false);
+    setIsSlideshowRunning(false);
+  }
+
+  function stopSlideshowOnly() {
+    if (slideshowRef.current) {
+      window.clearInterval(slideshowRef.current);
+      slideshowRef.current = null;
+    }
+    setIsSlideshowRunning(false);
   }
 
   function randomImageInGroup() {
@@ -288,10 +298,11 @@ function App() {
 
   function toggleSlideshow({ acrossGroups = false } = {}) {
     if (slideshowRef.current) {
-      stopSlideshowAndCloseViewer();
+      stopSlideshowOnly();
       return;
     }
     if (images.length === 0) return;
+    setIsSlideshowRunning(true);
     randomImageInGroup();
     slideshowRef.current = window.setInterval(() => {
       acrossGroups ? randomCategoryImage() : randomImageInGroup();
@@ -441,6 +452,7 @@ function App() {
         hasGroups={hasGroups}
         hasSelectedGroup={Boolean(selectedGroupId)}
         isFullscreen={isFullscreen}
+        isSlideshowRunning={isSlideshowRunning}
         onRandomImage={randomImageInGroup}
         onRandomAny={() => void randomCategoryImage()}
         onSlideshow={() => toggleSlideshow({ acrossGroups: false })}
@@ -448,6 +460,40 @@ function App() {
         onDeleteImage={() => void deleteCurrentImage()}
         onDeleteGroup={() => void deleteCurrentGroup()}
         onToggleFullscreen={() => void toggleFullscreen()}
+        onPrevGroup={() => {
+          const currentIndex = groups.findIndex(
+            (group) => group.id === selectedGroupId
+          );
+          if (currentIndex > 0) {
+            setSelectedGroupId(groups[currentIndex - 1].id);
+          }
+        }}
+        onNextGroup={() => {
+          const currentIndex = groups.findIndex(
+            (group) => group.id === selectedGroupId
+          );
+          if (currentIndex >= 0 && currentIndex < groups.length - 1) {
+            setSelectedGroupId(groups[currentIndex + 1].id);
+          }
+        }}
+        onPrevImage={() => {
+          setSelectedImageIndex((index) => {
+            if (index === null) return null;
+            return Math.max(0, index - 1);
+          });
+        }}
+        onNextImage={() => {
+          setSelectedImageIndex((index) => {
+            if (index === null) return null;
+            return Math.min(images.length - 1, index + 1);
+          });
+        }}
+        onOpenViewer={() => {
+          if (selectedImageIndex !== null && images[selectedImageIndex]) {
+            setViewerOpen(true);
+          }
+        }}
+        onCloseViewer={stopSlideshowAndCloseViewer}
       />
 
       <section className="workspace">
