@@ -1,0 +1,44 @@
+.toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 32px 16px;
+  flex-wrap: wrap;
+}
+
+.toolbar-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.toolbar-actions button {
+  background: #f5f0e8;
+  color: #2f2a26;
+  border: 1px solid #e0d6c8;
+  box-shadow: none;
+}
+
+.toolbar-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.shortcut-menu {
+  background: #f5f0e8;
+  border: 1px solid #e0d6c8;
+  border-radius: 12px;
+  padding: 8px 12px;
+}
+
+.shortcut-menu summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.shortcut-menu ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: #6a5d54;
+}
