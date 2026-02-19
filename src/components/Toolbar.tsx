@@ -1,4 +1,18 @@
 import "./Toolbar.css";
+import diceIcon from "../assets/toolbar/dice.svg";
+import diceStackIcon from "../assets/toolbar/dice-stack.svg";
+import slideshowIcon from "../assets/toolbar/slideshow.svg";
+import slideshowAnyIcon from "../assets/toolbar/slideshow-any.svg";
+import groupPrevIcon from "../assets/toolbar/group-prev.svg";
+import groupNextIcon from "../assets/toolbar/group-next.svg";
+import imagePrevIcon from "../assets/toolbar/image-prev.svg";
+import imageNextIcon from "../assets/toolbar/image-next.svg";
+import openViewerIcon from "../assets/toolbar/open-viewer.svg";
+import closeViewerIcon from "../assets/toolbar/close-viewer.svg";
+import fullscreenIcon from "../assets/toolbar/fullscreen.svg";
+import fullscreenExitIcon from "../assets/toolbar/fullscreen-exit.svg";
+import deleteImageIcon from "../assets/toolbar/delete-image.svg";
+import deleteGroupIcon from "../assets/toolbar/delete-group.svg";
 
 type ToolbarProps = {
   hasImages: boolean;
@@ -42,135 +56,127 @@ export default function Toolbar({
   onCloseViewer,
 }: ToolbarProps) {
   return (
-    <section className="toolbar">
+    <section className="toolbar ribbon">
       <div className="toolbar-actions">
-        <div className="toolbar-group">
-          <span className="toolbar-label">Randomize</span>
-          <div className="toolbar-row">
-            <button
-              type="button"
-              onClick={onRandomImage}
-              disabled={!hasImages}
-              title="Random image in category (R)"
-            >
-              Random
-            </button>
-            <button
-              type="button"
-              onClick={onRandomAny}
-              disabled={!hasGroups}
-              title="Random category + image (⌘R)"
-            >
-              Random Any
-            </button>
-          </div>
-        </div>
-        <div className="toolbar-group">
-          <span className="toolbar-label">Slideshow</span>
-          <div className="toolbar-row">
-            <button
-              type="button"
-              onClick={onSlideshow}
-              disabled={!hasImages}
-              title="Slideshow in category (S)"
-            >
-              {isSlideshowRunning ? "Stop" : "Slideshow"}
-            </button>
-            <button
-              type="button"
-              onClick={onSlideshowAny}
-              disabled={!hasGroups}
-              title="Slideshow across categories (⌘S)"
-            >
-              {isSlideshowRunning ? "Stop Any" : "Slideshow Any"}
-            </button>
-          </div>
-        </div>
-        <div className="toolbar-group">
-          <span className="toolbar-label">Navigate</span>
-          <div className="toolbar-row">
-            <button
-              type="button"
-              onClick={onPrevGroup}
-              disabled={!hasGroups}
-              title="Previous category (⌘↑)"
-            >
-              Prev Group
-            </button>
-            <button
-              type="button"
-              onClick={onNextGroup}
-              disabled={!hasGroups}
-              title="Next category (⌘↓)"
-            >
-              Next Group
-            </button>
-            <button
-              type="button"
-              onClick={onPrevImage}
-              disabled={!hasImages}
-              title="Previous image (←)"
-            >
-              Prev Image
-            </button>
-            <button
-              type="button"
-              onClick={onNextImage}
-              disabled={!hasImages}
-              title="Next image (→)"
-            >
-              Next Image
-            </button>
-          </div>
-        </div>
-        <div className="toolbar-group">
-          <span className="toolbar-label">Viewer</span>
-          <div className="toolbar-row">
-            <button
-              type="button"
-              onClick={onOpenViewer}
-              disabled={!hasImages}
-              title="Open viewer (Enter)"
-            >
-              Open Viewer
-            </button>
-            <button
-              type="button"
-              onClick={onCloseViewer}
-              title="Close viewer (Esc)"
-            >
-              Close Viewer
-            </button>
-            <button
-              type="button"
-              onClick={onToggleFullscreen}
-              title="Fullscreen (F)"
-            >
-              {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
-            </button>
-          </div>
-        </div>
-        <div className="toolbar-group">
-          <span className="toolbar-label">Danger</span>
-          <div className="toolbar-row">
-            <button
-              type="button"
-              onClick={onDeleteImage}
-              disabled={!hasImages}
-              title="Delete image (⌘D)"
-            >
-              Delete Image
-            </button>
-            <button
-              type="button"
-              onClick={onDeleteGroup}
-              disabled={!hasSelectedGroup}
-              title="Delete category (⌘⌥D)"
-            >
-              Delete Group
-            </button>
-          </div>
-        </div>
+        <button
+          type="button"
+          onClick={onRandomImage}
+          disabled={!hasImages}
+          title="Random image in category (R)"
+          className="icon-button"
+        >
+          <img src={diceIcon} alt="" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          onClick={onRandomAny}
+          disabled={!hasGroups}
+          title="Random category + image (⌘R)"
+          className="icon-button"
+        >
+          <img src={diceStackIcon} alt="" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          onClick={onSlideshow}
+          disabled={!hasImages}
+          title="Slideshow in category (S)"
+          className="icon-button"
+        >
+          <img src={slideshowIcon} alt="" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          onClick={onSlideshowAny}
+          disabled={!hasGroups}
+          title="Slideshow across categories (⌘S)"
+          className="icon-button"
+        >
+          <img src={slideshowAnyIcon} alt="" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          onClick={onPrevGroup}
+          disabled={!hasGroups}
+          title="Previous category (⌘↑)"
+          className="icon-button"
+        >
+          <img src={groupPrevIcon} alt="" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          onClick={onNextGroup}
+          disabled={!hasGroups}
+          title="Next category (⌘↓)"
+          className="icon-button"
+        >
+          <img src={groupNextIcon} alt="" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          onClick={onPrevImage}
+          disabled={!hasImages}
+          title="Previous image (←)"
+          className="icon-button"
+        >
+          <img src={imagePrevIcon} alt="" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          onClick={onNextImage}
+          disabled={!hasImages}
+          title="Next image (→)"
+          className="icon-button"
+        >
+          <img src={imageNextIcon} alt="" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          onClick={onOpenViewer}
+          disabled={!hasImages}
+          title="Open viewer (Enter)"
+          className="icon-button"
+        >
+          <img src={openViewerIcon} alt="" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          onClick={onCloseViewer}
+          title="Close viewer (Esc)"
+          className="icon-button"
+        >
+          <img src={closeViewerIcon} alt="" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          onClick={onToggleFullscreen}
+          title="Fullscreen (F)"
+          className="icon-button"
+        >
+          <img
+            src={isFullscreen ? fullscreenExitIcon : fullscreenIcon}
+            alt=""
+            aria-hidden="true"
+          />
+        </button>
+        <button
+          type="button"
+          onClick={onDeleteImage}
+          disabled={!hasImages}
+          title="Delete image (⌘D)"
+          className="icon-button danger"
+        >
+          <img src={deleteImageIcon} alt="" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          onClick={onDeleteGroup}
+          disabled={!hasSelectedGroup}
+          title="Delete category (⌘⌥D)"
+          className="icon-button danger"
+        >
+          <img src={deleteGroupIcon} alt="" aria-hidden="true" />
+        </button>
       </div>
       <details className="shortcut-menu">
         <summary>Shortcuts</summary>

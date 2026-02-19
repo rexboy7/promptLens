@@ -1,38 +1,24 @@
 .toolbar {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
   padding: 0 32px 16px;
   flex-wrap: wrap;
 }
 
+.toolbar.ribbon {
+  padding: 8px 20px;
+  border-bottom: 1px solid #eadfd3;
+  background: linear-gradient(180deg, #f6efe6 0%, #f2e9df 100%);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
 .toolbar-actions {
   display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.toolbar-group {
-  display: flex;
-  flex-direction: column;
   gap: 6px;
-  padding: 6px 10px;
-  border-radius: 12px;
-  background: #f9f4ee;
-  border: 1px solid #eadfd3;
-}
-
-.toolbar-label {
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #8b7b6f;
-}
-
-.toolbar-row {
-  display: flex;
-  gap: 8px;
   flex-wrap: wrap;
 }
 
@@ -46,6 +32,26 @@
 .toolbar-actions button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.icon-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  padding: 6px;
+  min-width: 32px;
+}
+
+.icon-button img {
+  width: 18px;
+  height: 18px;
+}
+
+.icon-button.danger {
+  background: #f9ece9;
+  border-color: #e2b8ae;
+  color: #8e3b2d;
 }
 
 .shortcut-menu {
