@@ -1,21 +1,14 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import type { ImageItem } from "../../data/types";
+import { useGallery } from "../../app/GalleryContext";
 
-type ImageGridProps = {
-  images: ImageItem[];
-  selectedImageIndex: number | null;
-  imageRefs: React.MutableRefObject<Record<number, HTMLButtonElement | null>>;
-  onSelectImage: (index: number) => void;
-  onOpenViewer: () => void;
-};
-
-export default function ImageGrid({
-  images,
-  selectedImageIndex,
-  imageRefs,
-  onSelectImage,
-  onOpenViewer,
-}: ImageGridProps) {
+export default function ImageGrid() {
+  const {
+    images,
+    selectedImageIndex,
+    imageRefs,
+    setSelectedImageIndex,
+    setViewerOpen,
+  } = useGallery();
   return (
     <section className="image-grid">
       {images.map((image, index) => {
@@ -29,8 +22,8 @@ export default function ImageGrid({
               imageRefs.current[index] = node;
             }}
             onClick={() => {
-              onSelectImage(index);
-              onOpenViewer();
+              setSelectedImageIndex(index);
+              setViewerOpen(true);
             }}
           >
             <img src={src} alt={`${image.serial}-${image.seed}`} />

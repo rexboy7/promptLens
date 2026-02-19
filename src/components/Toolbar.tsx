@@ -1,3 +1,4 @@
+import { useGallery } from "../../app/GalleryContext";
 import "./Toolbar.css";
 import diceIcon from "../assets/toolbar/dice.svg";
 import diceStackIcon from "../assets/toolbar/dice-stack.svg";
@@ -14,53 +15,33 @@ import fullscreenExitIcon from "../assets/toolbar/fullscreen-exit.svg";
 import deleteImageIcon from "../assets/toolbar/delete-image.svg";
 import deleteGroupIcon from "../assets/toolbar/delete-group.svg";
 
-type ToolbarProps = {
-  hasImages: boolean;
-  hasGroups: boolean;
-  hasSelectedGroup: boolean;
-  isFullscreen: boolean;
-  isSlideshowRunning: boolean;
-  onRandomImage: () => void;
-  onRandomAny: () => void;
-  onSlideshow: () => void;
-  onSlideshowAny: () => void;
-  onDeleteImage: () => void;
-  onDeleteGroup: () => void;
-  onToggleFullscreen: () => void;
-  onPrevGroup: () => void;
-  onNextGroup: () => void;
-  onPrevImage: () => void;
-  onNextImage: () => void;
-  onOpenViewer: () => void;
-  onCloseViewer: () => void;
-};
-
-export default function Toolbar({
-  hasImages,
-  hasGroups,
-  hasSelectedGroup,
-  isFullscreen,
-  isSlideshowRunning,
-  onRandomImage,
-  onRandomAny,
-  onSlideshow,
-  onSlideshowAny,
-  onDeleteImage,
-  onDeleteGroup,
-  onToggleFullscreen,
-  onPrevGroup,
-  onNextGroup,
-  onPrevImage,
-  onNextImage,
-  onOpenViewer,
-  onCloseViewer,
-}: ToolbarProps) {
+export default function Toolbar() {
+  const {
+    hasImages,
+    hasGroups,
+    selectedGroupId,
+    isFullscreen,
+    isSlideshowRunning,
+    randomImageInGroup,
+    randomCategoryImage,
+    toggleSlideshow,
+    deleteCurrentImage,
+    deleteCurrentGroup,
+    toggleFullscreen,
+    goPrevGroup,
+    goNextGroup,
+    goPrevImage,
+    goNextImage,
+    openViewer,
+    stopSlideshowAndCloseViewer,
+  } = useGallery();
+  const hasSelectedGroup = Boolean(selectedGroupId);
   return (
     <section className="toolbar ribbon">
       <div className="toolbar-actions">
         <button
           type="button"
-          onClick={onRandomImage}
+          onClick={randomImageInGroup}
           disabled={!hasImages}
           title="Random image in category (R)"
           className="icon-button"
@@ -69,7 +50,7 @@ export default function Toolbar({
         </button>
         <button
           type="button"
-          onClick={onRandomAny}
+          onClick={() => void randomCategoryImage()}
           disabled={!hasGroups}
           title="Random category + image (⌘R)"
           className="icon-button"
@@ -78,7 +59,7 @@ export default function Toolbar({
         </button>
         <button
           type="button"
-          onClick={onSlideshow}
+          onClick={() => toggleSlideshow({ acrossGroups: false })}
           disabled={!hasImages}
           title="Slideshow in category (S)"
           className="icon-button"
@@ -87,7 +68,7 @@ export default function Toolbar({
         </button>
         <button
           type="button"
-          onClick={onSlideshowAny}
+          onClick={() => toggleSlideshow({ acrossGroups: true })}
           disabled={!hasGroups}
           title="Slideshow across categories (⌘S)"
           className="icon-button"
@@ -96,7 +77,7 @@ export default function Toolbar({
         </button>
         <button
           type="button"
-          onClick={onPrevGroup}
+          onClick={goPrevGroup}
           disabled={!hasGroups}
           title="Previous category (⌘↑)"
           className="icon-button"
@@ -105,7 +86,7 @@ export default function Toolbar({
         </button>
         <button
           type="button"
-          onClick={onNextGroup}
+          onClick={goNextGroup}
           disabled={!hasGroups}
           title="Next category (⌘↓)"
           className="icon-button"
@@ -114,7 +95,7 @@ export default function Toolbar({
         </button>
         <button
           type="button"
-          onClick={onPrevImage}
+          onClick={goPrevImage}
           disabled={!hasImages}
           title="Previous image (←)"
           className="icon-button"
@@ -123,7 +104,7 @@ export default function Toolbar({
         </button>
         <button
           type="button"
-          onClick={onNextImage}
+          onClick={goNextImage}
           disabled={!hasImages}
           title="Next image (→)"
           className="icon-button"
@@ -132,7 +113,7 @@ export default function Toolbar({
         </button>
         <button
           type="button"
-          onClick={onOpenViewer}
+          onClick={openViewer}
           disabled={!hasImages}
           title="Open viewer (Enter)"
           className="icon-button"
@@ -141,7 +122,7 @@ export default function Toolbar({
         </button>
         <button
           type="button"
-          onClick={onCloseViewer}
+          onClick={stopSlideshowAndCloseViewer}
           title="Close viewer (Esc)"
           className="icon-button"
         >
@@ -149,7 +130,7 @@ export default function Toolbar({
         </button>
         <button
           type="button"
-          onClick={onToggleFullscreen}
+          onClick={() => void toggleFullscreen()}
           title="Fullscreen (F)"
           className="icon-button"
         >
@@ -161,7 +142,7 @@ export default function Toolbar({
         </button>
         <button
           type="button"
-          onClick={onDeleteImage}
+          onClick={() => void deleteCurrentImage()}
           disabled={!hasImages}
           title="Delete image (⌘D)"
           className="icon-button danger"
@@ -170,7 +151,7 @@ export default function Toolbar({
         </button>
         <button
           type="button"
-          onClick={onDeleteGroup}
+          onClick={() => void deleteCurrentGroup()}
           disabled={!hasSelectedGroup}
           title="Delete category (⌘⌥D)"
           className="icon-button danger"

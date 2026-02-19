@@ -1,34 +1,24 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import type { Group, ImageItem } from "../../data/types";
+import { useGallery } from "../../app/GalleryContext";
 
-type ViewerProps = {
-  images: ImageItem[];
-  selectedImageIndex: number;
-  selectedGroup?: Group | null;
-  isFullscreen: boolean;
-  viewerRef: React.MutableRefObject<HTMLDivElement | null>;
-  onClose: () => void;
-  onToggleFullscreen: () => void;
-  onPrev: () => void;
-  onNext: () => void;
-};
-
-export default function Viewer({
-  images,
-  selectedImageIndex,
-  selectedGroup,
-  isFullscreen,
-  viewerRef,
-  onClose,
-  onToggleFullscreen,
-  onPrev,
-  onNext,
-}: ViewerProps) {
+export default function Viewer() {
+  const {
+    images,
+    selectedImageIndex,
+    selectedGroup,
+    isFullscreen,
+    viewerRef,
+    stopSlideshowAndCloseViewer,
+    toggleFullscreen,
+    goPrevImage,
+    goNextImage,
+  } = useGallery();
+  if (selectedImageIndex === null) return null;
   const image = images[selectedImageIndex];
   if (!image) return null;
 
   return (
-    <div className="viewer" onClick={onClose} ref={viewerRef}>
+    <div className="viewer" onClick={stopSlideshowAndCloseViewer} ref={viewerRef}>
       <div className="viewer-toolbar" onClick={(event) => event.stopPropagation()}>
         <span>
           {selectedImageIndex + 1} / {images.length}
@@ -39,7 +29,7 @@ export default function Viewer({
           className="viewer-toggle"
           onClick={(event) => {
             event.stopPropagation();
-            onToggleFullscreen();
+            void toggleFullscreen();
           }}
         >
           {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
@@ -50,7 +40,7 @@ export default function Viewer({
         className="viewer-nav prev"
         onClick={(event) => {
           event.stopPropagation();
-          onPrev();
+          goPrevImage();
         }}
         disabled={selectedImageIndex === 0}
       >
@@ -67,7 +57,7 @@ export default function Viewer({
         className="viewer-nav next"
         onClick={(event) => {
           event.stopPropagation();
-          onNext();
+          goNextImage();
         }}
         disabled={selectedImageIndex >= images.length - 1}
       >

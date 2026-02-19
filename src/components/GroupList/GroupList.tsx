@@ -1,21 +1,14 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import type { Group } from "../../data/types";
+import { useGallery } from "../../app/GalleryContext";
 
-type GroupListProps = {
-  groups: Group[];
-  selectedGroupId: string | null;
-  groupRefs: React.MutableRefObject<Record<string, HTMLButtonElement | null>>;
-  truncateLabel: (text: string, maxLength?: number) => string;
-  onSelectGroup: (id: string) => void;
-};
-
-export default function GroupList({
-  groups,
-  selectedGroupId,
-  groupRefs,
-  truncateLabel,
-  onSelectGroup,
-}: GroupListProps) {
+export default function GroupList() {
+  const {
+    groups,
+    selectedGroupId,
+    groupRefs,
+    truncateLabel,
+    setSelectedGroupId,
+  } = useGallery();
   return (
     <aside className="group-list">
       {groups.map((group) => {
@@ -29,7 +22,7 @@ export default function GroupList({
             ref={(node) => {
               groupRefs.current[group.id] = node;
             }}
-            onClick={() => onSelectGroup(group.id)}
+            onClick={() => setSelectedGroupId(group.id)}
           >
             <img src={thumbSrc} alt={`Group ${group.id}`} />
             <div className="group-meta">

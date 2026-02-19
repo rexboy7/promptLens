@@ -1,74 +1,75 @@
-import type { GroupMode } from "../../data/types";
+import { useGallery } from "../../app/GalleryContext";
 
-type FiltersProps = {
-  searchText: string;
-  dateFilter: string;
-  groupMode: GroupMode;
-  status: string;
-  onSearchChange: (value: string) => void;
-  onDateChange: (value: string) => void;
-  onApply: () => void;
-  onGroupModeChange: (mode: GroupMode) => void;
-  onExtractPrompts: () => void;
-};
-
-export default function Filters({
-  searchText,
-  dateFilter,
-  groupMode,
-  status,
-  onSearchChange,
-  onDateChange,
-  onApply,
-  onGroupModeChange,
-  onExtractPrompts,
-}: FiltersProps) {
+export default function Filters() {
+  const {
+    searchText,
+    dateFilter,
+    groupMode,
+    status,
+    setSearchText,
+    setDateFilter,
+    setGroupMode,
+    refreshGroups,
+    extractPromptsAction,
+  } = useGallery();
   return (
     <section className="filters">
       <input
         value={searchText}
-        onChange={(event) => onSearchChange(event.currentTarget.value)}
+        onChange={(event) => setSearchText(event.currentTarget.value)}
         placeholder="Search prompts or dates"
       />
       <input
         value={dateFilter}
-        onChange={(event) => onDateChange(event.currentTarget.value)}
+        onChange={(event) => setDateFilter(event.currentTarget.value)}
         placeholder="Date filter YYYY-MM-DD"
       />
-      <button type="button" onClick={onApply}>
+      <button type="button" onClick={() => refreshGroups()}>
         Apply
       </button>
       <div className="mode-toggle">
         <button
           type="button"
           className={groupMode === "prompt" ? "mode active" : "mode"}
-          onClick={() => onGroupModeChange("prompt")}
+          onClick={() => {
+            setGroupMode("prompt");
+            void refreshGroups("prompt");
+          }}
         >
           Prompt
         </button>
         <button
           type="button"
           className={groupMode === "prompt_date" ? "mode active" : "mode"}
-          onClick={() => onGroupModeChange("prompt_date")}
+          onClick={() => {
+            setGroupMode("prompt_date");
+            void refreshGroups("prompt_date");
+          }}
         >
           Prompt + Date
         </button>
         <button
           type="button"
           className={groupMode === "date_prompt" ? "mode active" : "mode"}
-          onClick={() => onGroupModeChange("date_prompt")}
+          onClick={() => {
+            setGroupMode("date_prompt");
+            void refreshGroups("date_prompt");
+          }}
         >
           Date + Prompt
         </button>
         <button
           type="button"
           className={groupMode === "date" ? "mode active" : "mode"}
-          onClick={() => onGroupModeChange("date")}
+          onClick={() => {
+            setGroupMode("date");
+            void refreshGroups("date");
+          }}
         >
           Date
         </button>
       </div>
-      <button type="button" onClick={onExtractPrompts}>
+      <button type="button" onClick={extractPromptsAction}>
         Extract Prompts
       </button>
       <span className="status">{status}</span>
