@@ -1,25 +1,19 @@
+import { useGallery } from "../../app/GalleryContext";
 import "./RootSelector.css";
 
-type RootSelectorProps = {
-  rootPath: string;
-  recentRoots: string[];
-  onRootChange: (value: string) => void;
-  onScan: () => void;
-  onBrowse: () => void;
-};
-
-export default function RootSelector({
-  rootPath,
-  recentRoots,
-  onRootChange,
-  onScan,
-  onBrowse,
-}: RootSelectorProps) {
+export default function RootSelector() {
+  const {
+    rootPath,
+    recentRoots,
+    handleRootChange,
+    scanDirectoryAction,
+    browseForRoot,
+  } = useGallery();
   return (
     <div className="controls root-selector">
       <input
         value={rootPath}
-        onChange={(event) => onRootChange(event.currentTarget.value)}
+        onChange={(event) => handleRootChange(event.currentTarget.value)}
         placeholder="Root folder path (e.g. /Users/me/Images)"
         list="recent-roots"
       />
@@ -27,7 +21,7 @@ export default function RootSelector({
         <select
           className="recent-select"
           value=""
-          onChange={(event) => onRootChange(event.currentTarget.value)}
+          onChange={(event) => handleRootChange(event.currentTarget.value)}
         >
           <option value="" disabled>
             Recent
@@ -39,10 +33,10 @@ export default function RootSelector({
           ))}
         </select>
       )}
-      <button type="button" onClick={onScan}>
+      <button type="button" onClick={scanDirectoryAction}>
         Scan
       </button>
-      <button type="button" onClick={onBrowse}>
+      <button type="button" onClick={browseForRoot}>
         Browse
       </button>
       <datalist id="recent-roots">

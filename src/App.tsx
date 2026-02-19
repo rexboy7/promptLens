@@ -8,15 +8,7 @@ import RootSelector from "./components/RootSelector/RootSelector";
 import "./App.css";
 
 function AppContent() {
-  const {
-    rootPath,
-    recentRoots,
-    scanDirectoryAction,
-    browseForRoot,
-    handleRootChange,
-    viewerOpen,
-    stopSlideshowAndCloseViewer,
-  } = useGallery();
+  const { viewerOpen } = useGallery();
 
   return (
     <main className="app-shell">
@@ -26,13 +18,7 @@ function AppContent() {
           <h1>PromptGallery</h1>
           <p className="subtitle">Batch-first AI image viewer</p>
         </div>
-        <RootSelector
-          rootPath={rootPath}
-          recentRoots={recentRoots}
-          onRootChange={handleRootChange}
-          onScan={scanDirectoryAction}
-          onBrowse={browseForRoot}
-        />
+        <RootSelector />
       </header>
 
       <Filters />

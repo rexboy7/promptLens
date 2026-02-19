@@ -1,4 +1,4 @@
-import { useGallery } from "../../app/GalleryContext";
+import { useGallery } from "../app/GalleryContext";
 import "./Toolbar.css";
 import diceIcon from "../assets/toolbar/dice.svg";
 import diceStackIcon from "../assets/toolbar/dice-stack.svg";
