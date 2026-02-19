@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
+import { listen } from "@tauri-apps/api/event";
 import Toolbar from "./components/Toolbar";
 import "./App.css";
 
@@ -170,6 +171,38 @@ function App() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [groups, images.length, selectedGroupId, selectedImageIndex, isFullscreen]);
+
+  useEffect(() => {
+    const unlistenPromise = listen<string>("menu-action", (event) => {
+      const action = event.payload;
+      if (action === "random_image") {
+        randomImageInGroup();
+      } else if (action === "random_any") {
+        void randomCategoryImage();
+      } else if (action === "slideshow") {
+        toggleSlideshow({ acrossGroups: false });
+      } else if (action === "slideshow_any") {
+        toggleSlideshow({ acrossGroups: true });
+      } else if (action === "delete_image") {
+        void deleteCurrentImage();
+      } else if (action === "delete_group") {
+        void deleteCurrentGroup();
+      } else if (action === "fullscreen") {
+        void toggleFullscreen();
+      } else if (action === "extract_prompts") {
+        void extractPrompts();
+      }
+    });
+    return () => {
+      void unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, [
+    groups.length,
+    images.length,
+    selectedGroupId,
+    selectedImageIndex,
+    isFullscreen,
+  ]);
 
   useEffect(() => {
     const stored = localStorage.getItem("promptlens.recentRoots");
@@ -363,6 +396,26 @@ function App() {
 
   return (
     <main className="app-shell">
+      <Toolbar
+        hasImages={hasImages}
+        hasGroups={hasGroups}
+        hasSelectedGroup={Boolean(selectedGroupId)}
+        isFullscreen={isFullscreen}
+        isSlideshowRunning={isSlideshowRunning}
+        onRandomImage={randomImageInGroup}
+        onRandomAny={() => void randomCategoryImage()}
+        onSlideshow={() => toggleSlideshow({ acrossGroups: false })}
+        onSlideshowAny={() => toggleSlideshow({ acrossGroups: true })}
+        onDeleteImage={() => void deleteCurrentImage()}
+        onDeleteGroup={() => void deleteCurrentGroup()}
+        onToggleFullscreen={() => void toggleFullscreen()}
+        onPrevGroup={goPrevGroup}
+        onNextGroup={goNextGroup}
+        onPrevImage={goPrevImage}
+        onNextImage={goNextImage}
+        onOpenViewer={openViewer}
+        onCloseViewer={stopSlideshowAndCloseViewer}
+      />
       <header className="app-header">
         <div>
           <h1>PromptGallery</h1>
@@ -467,26 +520,6 @@ function App() {
         <span className="status">{status}</span>
       </section>
 
-      <Toolbar
-        hasImages={hasImages}
-        hasGroups={hasGroups}
-        hasSelectedGroup={Boolean(selectedGroupId)}
-        isFullscreen={isFullscreen}
-        isSlideshowRunning={isSlideshowRunning}
-        onRandomImage={randomImageInGroup}
-        onRandomAny={() => void randomCategoryImage()}
-        onSlideshow={() => toggleSlideshow({ acrossGroups: false })}
-        onSlideshowAny={() => toggleSlideshow({ acrossGroups: true })}
-        onDeleteImage={() => void deleteCurrentImage()}
-        onDeleteGroup={() => void deleteCurrentGroup()}
-        onToggleFullscreen={() => void toggleFullscreen()}
-        onPrevGroup={goPrevGroup}
-        onNextGroup={goNextGroup}
-        onPrevImage={goPrevImage}
-        onNextImage={goNextImage}
-        onOpenViewer={openViewer}
-        onCloseViewer={stopSlideshowAndCloseViewer}
-      />
 
       <section className="workspace">
         <aside className="group-list">

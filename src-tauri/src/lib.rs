@@ -3,7 +3,8 @@ use serde::Serialize;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use tauri::{AppHandle, Manager};
+use tauri::menu::{Menu, MenuItem, Submenu};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
 use walkdir::WalkDir;
 
 const DB_SCHEMA_VERSION: i32 = 3;
@@ -860,6 +861,73 @@ fn extract_prompts(app: AppHandle) -> Result<PromptResult, String> {
     Ok(PromptResult { scanned, updated })
 }
 
+fn build_menu<R: Runtime>(app: &tauri::App<R>) -> Result<Menu<R>, tauri::Error> {
+    let random_image = MenuItem::with_id(
+        app,
+        "random_image",
+        "Random Image",
+        true,
+        Option::<&str>::None,
+    )?;
+    let random_any =
+        MenuItem::with_id(app, "random_any", "Random Any", true, Option::<&str>::None)?;
+    let slideshow =
+        MenuItem::with_id(app, "slideshow", "Slideshow", true, Option::<&str>::None)?;
+    let slideshow_any = MenuItem::with_id(
+        app,
+        "slideshow_any",
+        "Slideshow Any",
+        true,
+        Option::<&str>::None,
+    )?;
+    let delete_image = MenuItem::with_id(
+        app,
+        "delete_image",
+        "Delete Image",
+        true,
+        Option::<&str>::None,
+    )?;
+    let delete_group = MenuItem::with_id(
+        app,
+        "delete_group",
+        "Delete Group",
+        true,
+        Option::<&str>::None,
+    )?;
+    let fullscreen = MenuItem::with_id(
+        app,
+        "fullscreen",
+        "Toggle Fullscreen",
+        true,
+        Option::<&str>::None,
+    )?;
+    let extract_prompts = MenuItem::with_id(
+        app,
+        "extract_prompts",
+        "Extract Prompts",
+        true,
+        Option::<&str>::None,
+    )?;
+
+    let actions_submenu = Submenu::with_items(
+        app,
+        "Actions",
+        true,
+        &[
+            &random_image,
+            &random_any,
+            &slideshow,
+            &slideshow_any,
+            &delete_image,
+            &delete_group,
+            &fullscreen,
+            &extract_prompts,
+        ],
+    )?;
+
+    Menu::with_items(app, &[&actions_submenu])
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -873,6 +941,18 @@ pub fn run() {
             delete_group,
             extract_prompts
         ])
+        .setup(|app| {
+            let menu = build_menu(app)?;
+            app.set_menu(menu)?;
+            Ok(())
+        })
+        .on_menu_event(|app, event| {
+            let id = event.id();
+            let window = app.get_webview_window("main");
+            if let Some(window) = window {
+                let _ = window.emit("menu-action", id.as_ref());
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
