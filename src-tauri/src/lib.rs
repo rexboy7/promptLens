@@ -1,5 +1,6 @@
 use rusqlite::{params, types::Value, Connection};
 use serde::Serialize;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -51,6 +52,15 @@ struct ImageMeta {
     date: String,
     serial: i64,
     seed: i64,
+    mtime: i64,
+}
+
+struct DbImageRow {
+    path: String,
+    date: String,
+    serial: i64,
+    seed: i64,
+    mtime: i64,
 }
 
 fn is_date_segment(segment: &str) -> bool {
@@ -183,7 +193,8 @@ fn init_db(conn: &Connection) -> Result<(), String> {
 }
 
 fn build_index(conn: &mut Connection, root_path: &str) -> Result<ScanResult, String> {
-    let mut items: Vec<ImageMeta> = Vec::new();
+    let mut items_by_path: HashMap<String, ImageMeta> = HashMap::new();
+    let mut items_by_date: HashMap<String, Vec<ImageMeta>> = HashMap::new();
     for entry in WalkDir::new(root_path).into_iter().filter_map(Result::ok) {
         if !entry.file_type().is_file() {
             continue;
@@ -195,111 +206,153 @@ fn build_index(conn: &mut Connection, root_path: &str) -> Result<ScanResult, Str
                 None => continue,
             };
             let path_str = path.to_string_lossy().to_string();
-            items.push(ImageMeta {
-                path: path_str,
-                date,
+            let mtime = match fs::metadata(path)
+                .and_then(|m| m.modified())
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).map_err(|e| {
+                    std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
+                })) {
+                Ok(duration) => duration.as_secs() as i64,
+                Err(_) => 0,
+            };
+            let meta = ImageMeta {
+                path: path_str.clone(),
+                date: date.clone(),
                 serial,
                 seed,
-            });
+                mtime,
+            };
+            items_by_path.insert(path_str.clone(), meta.clone());
+            items_by_date.entry(date).or_default().push(meta);
         }
     }
 
-    items.sort_by(|a, b| {
-        a.date
-            .cmp(&b.date)
-            .then(a.serial.cmp(&b.serial))
-            .then(a.seed.cmp(&b.seed))
-    });
+    let mut db_items: HashMap<String, DbImageRow> = HashMap::new();
+    {
+        let mut stmt = conn
+            .prepare("SELECT path, date, serial, seed, mtime FROM images")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(DbImageRow {
+                    path: row.get(0)?,
+                    date: row.get(1)?,
+                    serial: row.get(2)?,
+                    seed: row.get(3)?,
+                    mtime: row.get(4)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            let item = row.map_err(|e| e.to_string())?;
+            db_items.insert(item.path.clone(), item);
+        }
+    }
 
-    conn.execute_batch(
-        r#"
-        DELETE FROM images;
-        DELETE FROM batches;
-        "#,
-    )
-    .map_err(|e| e.to_string())?;
+    let mut dates_changed: HashSet<String> = HashSet::new();
+    for (path, item) in &items_by_path {
+        match db_items.remove(path) {
+            None => {
+                dates_changed.insert(item.date.clone());
+            }
+            Some(db_item) => {
+                if db_item.mtime != item.mtime
+                    || db_item.serial != item.serial
+                    || db_item.seed != item.seed
+                    || db_item.date != item.date
+                {
+                    dates_changed.insert(db_item.date);
+                    dates_changed.insert(item.date.clone());
+                }
+            }
+        }
+    }
+    for (_, db_item) in db_items {
+        dates_changed.insert(db_item.date);
+    }
 
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
-    let mut total_batches = 0usize;
-    let mut total_images = 0usize;
+    if !dates_changed.is_empty() {
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        let mut sorted_dates: Vec<String> = dates_changed.into_iter().collect();
+        sorted_dates.sort();
+        for date in sorted_dates {
+            tx.execute("DELETE FROM images WHERE date = ?1", params![date])
+                .map_err(|e| e.to_string())?;
+            tx.execute("DELETE FROM batches WHERE date = ?1", params![date])
+                .map_err(|e| e.to_string())?;
+            let Some(mut items) = items_by_date.get(&date).cloned() else {
+                continue;
+            };
+            items.sort_by(|a, b| a.serial.cmp(&b.serial).then(a.seed.cmp(&b.seed)));
+            let mut current_batch_id: Option<i64> = None;
+            let mut prev_serial: Option<i64> = None;
+            let mut prev_seed: Option<i64> = None;
+            for item in items {
+                let new_sequence = match (prev_serial, prev_seed) {
+                    (Some(ps), Some(pd)) => item.serial != ps + 1 || item.seed != pd + 1,
+                    _ => true,
+                };
 
-    let mut current_date: Option<String> = None;
-    let mut current_batch_id: Option<i64> = None;
-    let mut prev_serial: Option<i64> = None;
-    let mut prev_seed: Option<i64> = None;
+                if new_sequence || current_batch_id.is_none() {
+                    let batch_id = tx
+                        .execute(
+                            r#"
+                            INSERT INTO batches (
+                                date, first_serial, last_serial, first_seed, last_seed, representative_path
+                            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                            "#,
+                            params![
+                                item.date,
+                                item.serial,
+                                item.serial,
+                                item.seed,
+                                item.seed,
+                                item.path
+                            ],
+                        )
+                        .map_err(|e| e.to_string())
+                        .and_then(|_| Ok(tx.last_insert_rowid()))?;
+                    current_batch_id = Some(batch_id);
+                } else if let Some(batch_id) = current_batch_id {
+                    tx.execute(
+                        "UPDATE batches SET last_serial = ?1, last_seed = ?2 WHERE id = ?3",
+                        params![item.serial, item.seed, batch_id],
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
 
-    for item in items {
-        let new_date = current_date.as_deref() != Some(&item.date);
-        let new_sequence = match (prev_serial, prev_seed) {
-            (Some(ps), Some(pd)) => item.serial != ps + 1 || item.seed != pd + 1,
-            _ => true,
-        };
-
-        if new_date || new_sequence || current_batch_id.is_none() {
-            let batch_id = tx
-                .execute(
+                tx.execute(
                     r#"
-                    INSERT INTO batches (
-                        date, first_serial, last_serial, first_seed, last_seed, representative_path
-                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                    INSERT INTO images (path, date, serial, seed, batch_id, mtime)
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6)
                     "#,
                     params![
+                        item.path,
                         item.date,
                         item.serial,
-                        item.serial,
                         item.seed,
-                        item.seed,
-                        item.path
+                        current_batch_id.unwrap(),
+                        item.mtime
                     ],
                 )
-                .map_err(|e| e.to_string())
-                .and_then(|_| Ok(tx.last_insert_rowid()))?;
-            current_batch_id = Some(batch_id);
-            current_date = Some(item.date.clone());
-            total_batches += 1;
-        } else if let Some(batch_id) = current_batch_id {
-            tx.execute(
-                "UPDATE batches SET last_serial = ?1, last_seed = ?2 WHERE id = ?3",
-                params![item.serial, item.seed, batch_id],
-            )
-            .map_err(|e| e.to_string())?;
+                .map_err(|e| e.to_string())?;
+
+                prev_serial = Some(item.serial);
+                prev_seed = Some(item.seed);
+            }
         }
-
-        let mtime = match fs::metadata(&item.path)
-            .and_then(|m| m.modified())
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).map_err(|e| {
-                std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
-            })) {
-            Ok(duration) => duration.as_secs() as i64,
-            Err(_) => 0,
-        };
-
-        tx.execute(
-            r#"
-            INSERT INTO images (path, date, serial, seed, batch_id, mtime)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-            "#,
-            params![
-                item.path,
-                item.date,
-                item.serial,
-                item.seed,
-                current_batch_id.unwrap(),
-                mtime
-            ],
-        )
-        .map_err(|e| e.to_string())?;
-
-        total_images += 1;
-        prev_serial = Some(item.serial);
-        prev_seed = Some(item.seed);
+        tx.commit().map_err(|e| e.to_string())?;
     }
 
-    tx.commit().map_err(|e| e.to_string())?;
+    let total_images: i64 = conn
+        .query_row("SELECT COUNT(*) FROM images", [], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+    let total_batches: i64 = conn
+        .query_row("SELECT COUNT(*) FROM batches", [], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
 
     Ok(ScanResult {
-        total_images,
-        total_batches,
+        total_images: total_images as usize,
+        total_batches: total_batches as usize,
     })
 }
 
