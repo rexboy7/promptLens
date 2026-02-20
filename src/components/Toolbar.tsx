@@ -14,6 +14,7 @@ import fullscreenIcon from "../assets/toolbar/fullscreen.svg";
 import fullscreenExitIcon from "../assets/toolbar/fullscreen-exit.svg";
 import deleteImageIcon from "../assets/toolbar/delete-image.svg";
 import deleteGroupIcon from "../assets/toolbar/delete-group.svg";
+import rankIcon from "../assets/toolbar/rank.svg";
 
 export default function Toolbar() {
   const {
@@ -21,7 +22,6 @@ export default function Toolbar() {
     hasGroups,
     selectedGroupId,
     isFullscreen,
-    isSlideshowRunning,
     randomImageInGroup,
     randomCategoryImage,
     toggleSlideshow,
@@ -34,6 +34,9 @@ export default function Toolbar() {
     goNextImage,
     openViewer,
     stopSlideshowAndCloseViewer,
+    rankingActive,
+    startRanking,
+    stopRanking,
   } = useGallery();
   const hasSelectedGroup = Boolean(selectedGroupId);
   return (
@@ -157,6 +160,14 @@ export default function Toolbar() {
           className="icon-button danger"
         >
           <img src={deleteGroupIcon} alt="" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          onClick={rankingActive ? stopRanking : startRanking}
+          title="Ranking mode"
+          className="icon-button"
+        >
+          <img src={rankIcon} alt="" aria-hidden="true" />
         </button>
       </div>
       <details className="shortcut-menu">

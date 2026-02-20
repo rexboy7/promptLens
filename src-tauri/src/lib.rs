@@ -7,7 +7,7 @@ use tauri::menu::{Menu, MenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 use walkdir::WalkDir;
 
-const DB_SCHEMA_VERSION: i32 = 3;
+const DB_SCHEMA_VERSION: i32 = 4;
 
 #[derive(Serialize)]
 struct ScanResult {
@@ -36,6 +36,13 @@ struct ImageItem {
     path: String,
     serial: i64,
     seed: i64,
+}
+
+#[derive(Serialize)]
+struct RatingItem {
+    group_id: String,
+    rating: f64,
+    matches: i64,
 }
 
 #[derive(Clone)]
@@ -143,6 +150,18 @@ fn init_db(conn: &Connection) -> Result<(), String> {
                 FOREIGN KEY(batch_id) REFERENCES batches(id)
             );
             CREATE INDEX idx_images_prompt_id ON images(prompt_id);
+            CREATE TABLE ratings (
+                group_id TEXT PRIMARY KEY,
+                rating REAL NOT NULL,
+                matches INTEGER NOT NULL
+            );
+            CREATE TABLE comparisons (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_a TEXT NOT NULL,
+                group_b TEXT NOT NULL,
+                winner TEXT NOT NULL,
+                ts INTEGER NOT NULL
+            );
             "#,
         )
         .map_err(|e| e.to_string())?;
@@ -747,6 +766,113 @@ fn delete_image(app: AppHandle, image_path: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
+fn get_ratings(app: AppHandle, group_ids: Vec<String>) -> Result<Vec<RatingItem>, String> {
+    let conn = open_db(&app)?;
+    init_db(&conn)?;
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    for id in &group_ids {
+        tx.execute(
+            "INSERT OR IGNORE INTO ratings (group_id, rating, matches) VALUES (?1, 1000.0, 0)",
+            params![id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare("SELECT group_id, rating, matches FROM ratings WHERE group_id = ?1")
+        .map_err(|e| e.to_string())?;
+    let mut results = Vec::new();
+    for id in group_ids {
+        if let Ok(item) = stmt.query_row(params![id], |row| {
+            Ok(RatingItem {
+                group_id: row.get(0)?,
+                rating: row.get(1)?,
+                matches: row.get(2)?,
+            })
+        }) {
+            results.push(item);
+        }
+    }
+    Ok(results)
+}
+
+#[tauri::command]
+fn submit_comparison(
+    app: AppHandle,
+    left_id: String,
+    right_id: String,
+    winner_id: String,
+) -> Result<bool, String> {
+    let conn = open_db(&app)?;
+    init_db(&conn)?;
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    tx.execute(
+        "INSERT OR IGNORE INTO ratings (group_id, rating, matches) VALUES (?1, 1000.0, 0)",
+        params![left_id],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute(
+        "INSERT OR IGNORE INTO ratings (group_id, rating, matches) VALUES (?1, 1000.0, 0)",
+        params![right_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    let (left_rating, left_matches): (f64, i64) = tx
+        .query_row(
+            "SELECT rating, matches FROM ratings WHERE group_id = ?1",
+            params![left_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(|e| e.to_string())?;
+    let (right_rating, right_matches): (f64, i64) = tx
+        .query_row(
+            "SELECT rating, matches FROM ratings WHERE group_id = ?1",
+            params![right_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(|e| e.to_string())?;
+
+    let expected_left = 1.0 / (1.0 + 10.0_f64.powf((right_rating - left_rating) / 400.0));
+    let expected_right = 1.0 / (1.0 + 10.0_f64.powf((left_rating - right_rating) / 400.0));
+    let k = 24.0;
+    let (left_score, right_score) = if winner_id == left_id {
+        (1.0, 0.0)
+    } else {
+        (0.0, 1.0)
+    };
+
+    let new_left = left_rating + k * (left_score - expected_left);
+    let new_right = right_rating + k * (right_score - expected_right);
+
+    tx.execute(
+        "UPDATE ratings SET rating = ?1, matches = ?2 WHERE group_id = ?3",
+        params![new_left, left_matches + 1, left_id],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute(
+        "UPDATE ratings SET rating = ?1, matches = ?2 WHERE group_id = ?3",
+        params![new_right, right_matches + 1, right_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    tx.execute(
+        "INSERT INTO comparisons (group_a, group_b, winner, ts) VALUES (?1, ?2, ?3, ?4)",
+        params![left_id, right_id, winner_id, ts],
+    )
+    .map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+#[tauri::command]
 fn delete_group(app: AppHandle, group_id: String) -> Result<usize, String> {
     let mut conn = open_db(&app)?;
     init_db(&conn)?;
@@ -939,7 +1065,9 @@ pub fn run() {
             list_images,
             delete_image,
             delete_group,
-            extract_prompts
+            extract_prompts,
+            get_ratings,
+            submit_comparison
         ])
         .setup(|app| {
             let menu = build_menu(app)?;

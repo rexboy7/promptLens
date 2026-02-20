@@ -25,6 +25,21 @@ export type PromptResult = {
   updated: number;
 };
 
+export type RatingItem = {
+  group_id: string;
+  rating: number;
+  matches: number;
+};
+
+export type RankingPair = {
+  leftId: string;
+  rightId: string;
+  leftImages: ImageItem[];
+  rightImages: ImageItem[];
+  leftRating: number;
+  rightRating: number;
+};
+
 export type GroupKey =
   | { type: "prompt"; id: number }
   | { type: "batch"; id: number }

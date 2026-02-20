@@ -5,6 +5,7 @@ import GroupList from "./components/GroupList/GroupList";
 import ImageGrid from "./components/ImageGrid/ImageGrid";
 import Viewer from "./components/Viewer/Viewer";
 import RootSelector from "./components/RootSelector/RootSelector";
+import RankingPanel from "./components/RankingPanel/RankingPanel";
 import "./App.css";
 
 function AppContent() {
@@ -22,6 +23,7 @@ function AppContent() {
       </header>
 
       <Filters />
+      <RankingPanel />
 
       <section className="workspace">
         <GroupList />

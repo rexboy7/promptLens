@@ -1,5 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Group, GroupMode, ImageItem, PromptResult, ScanResult } from "./types";
+import type {
+  Group,
+  GroupMode,
+  ImageItem,
+  PromptResult,
+  RatingItem,
+  ScanResult,
+} from "./types";
 
 export async function scanDirectory(rootPath: string): Promise<ScanResult> {
   return invoke<ScanResult>("scan_directory", { rootPath });
@@ -31,4 +38,16 @@ export async function deleteImage(imagePath: string): Promise<boolean> {
 
 export async function deleteGroup(groupId: string): Promise<number> {
   return invoke<number>("delete_group", { groupId });
+}
+
+export async function getRatings(groupIds: string[]): Promise<RatingItem[]> {
+  return invoke<RatingItem[]>("get_ratings", { groupIds });
+}
+
+export async function submitComparison(params: {
+  leftId: string;
+  rightId: string;
+  winnerId: string;
+}): Promise<boolean> {
+  return invoke<boolean>("submit_comparison", params);
 }

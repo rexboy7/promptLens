@@ -8,11 +8,13 @@ import {
   deleteGroup,
   deleteImage,
   extractPrompts as extractPromptsApi,
+  getRatings,
   listGroups,
   listImages,
   scanDirectory as scanDirectoryApi,
+  submitComparison,
 } from "../data/galleryApi";
-import type { Group, GroupMode, ImageItem } from "../data/types";
+import type { Group, GroupMode, ImageItem, RankingPair } from "../data/types";
 
 export function useGalleryController() {
   const [rootPath, setRootPath] = useState("");
@@ -29,6 +31,8 @@ export function useGalleryController() {
   const [autoScanned, setAutoScanned] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isSlideshowRunning, setIsSlideshowRunning] = useState(false);
+  const [rankingActive, setRankingActive] = useState(false);
+  const [rankingPair, setRankingPair] = useState<RankingPair | null>(null);
 
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const slideshowRef = useRef<number | null>(null);
@@ -334,6 +338,80 @@ export function useGalleryController() {
     }
   }
 
+  async function buildRankingPair() {
+    if (groups.length < 2) {
+      setRankingPair(null);
+      return;
+    }
+    const eligible = groups.filter((group) => group.size >= 2);
+    if (eligible.length < 2) {
+      setRankingPair(null);
+      return;
+    }
+    const ratings = await getRatings(eligible.map((group) => group.id));
+    const ratingsById = new Map(ratings.map((item) => [item.group_id, item]));
+    const sorted = [...eligible].sort((a, b) => {
+      const aMatches = ratingsById.get(a.id)?.matches ?? 0;
+      const bMatches = ratingsById.get(b.id)?.matches ?? 0;
+      return aMatches - bMatches;
+    });
+    const pool = sorted.slice(0, Math.min(6, sorted.length));
+    const leftGroup = pool[Math.floor(Math.random() * pool.length)];
+    let rightGroup = pool[Math.floor(Math.random() * pool.length)];
+    if (pool.length > 1) {
+      while (rightGroup.id === leftGroup.id) {
+        rightGroup = pool[Math.floor(Math.random() * pool.length)];
+      }
+    }
+    const leftImages = await listImages(leftGroup.id);
+    const rightImages = await listImages(rightGroup.id);
+    if (leftImages.length < 2 || rightImages.length < 2) {
+      setRankingPair(null);
+      return;
+    }
+    const pickTwo = (items: ImageItem[]) => {
+      const first = items[Math.floor(Math.random() * items.length)];
+      let second = items[Math.floor(Math.random() * items.length)];
+      while (second.path === first.path && items.length > 1) {
+        second = items[Math.floor(Math.random() * items.length)];
+      }
+      return [first, second];
+    };
+    const leftPick = pickTwo(leftImages);
+    const rightPick = pickTwo(rightImages);
+    const leftRating = ratingsById.get(leftGroup.id)?.rating ?? 1000;
+    const rightRating = ratingsById.get(rightGroup.id)?.rating ?? 1000;
+    setRankingPair({
+      leftId: leftGroup.id,
+      rightId: rightGroup.id,
+      leftImages: leftPick,
+      rightImages: rightPick,
+      leftRating,
+      rightRating,
+    });
+  }
+
+  async function startRanking() {
+    setRankingActive(true);
+    await buildRankingPair();
+  }
+
+  function stopRanking() {
+    setRankingActive(false);
+    setRankingPair(null);
+  }
+
+  async function submitRankingChoice(side: "left" | "right") {
+    if (!rankingPair) return;
+    const winnerId = side === "left" ? rankingPair.leftId : rankingPair.rightId;
+    await submitComparison({
+      leftId: rankingPair.leftId,
+      rightId: rankingPair.rightId,
+      winnerId,
+    });
+    await buildRankingPair();
+  }
+
   return {
     rootPath,
     setRootPath,
@@ -374,6 +452,11 @@ export function useGalleryController() {
     deleteCurrentImage,
     deleteCurrentGroup,
     extractPromptsAction,
+    rankingActive,
+    rankingPair,
+    startRanking,
+    stopRanking,
+    submitRankingChoice,
     goPrevGroup,
     goNextGroup,
     goPrevImage,
