@@ -163,7 +163,13 @@ export default function Toolbar() {
         </button>
         <button
           type="button"
-          onClick={rankingActive ? stopRanking : startRanking}
+          onClick={() => {
+            if (rankingActive) {
+              stopRanking();
+            } else {
+              void startRanking();
+            }
+          }}
           title="Ranking mode"
           className="icon-button"
         >
