@@ -1,4 +1,9 @@
-export type GroupMode = "prompt" | "prompt_date" | "date_prompt" | "date";
+export type GroupMode =
+  | "prompt"
+  | "prompt_date"
+  | "date_prompt"
+  | "date"
+  | "score";
 
 export type Group = {
   id: string;

@@ -18,24 +18,30 @@ export function useRankingController(groups: Group[]) {
   const [ratingByGroupId, setRatingByGroupId] = useState<
     Record<string, RatingItem>
   >({});
+  const [ratingsVersion, setRatingsVersion] = useState(0);
 
-  useEffect(() => {
+  const loadRatings = async (bumpVersion = false) => {
     if (groups.length === 0) {
       setRatingByGroupId({});
       return;
     }
-    void (async () => {
-      try {
-        const ratings = await getRatings(groups.map((group) => group.id));
-        const next: Record<string, RatingItem> = {};
-        ratings.forEach((item) => {
-          next[item.group_id] = item;
-        });
-        setRatingByGroupId(next);
-      } catch (error) {
-        console.warn("Failed to load ratings", error);
+    try {
+      const ratings = await getRatings(groups.map((group) => group.id));
+      const next: Record<string, RatingItem> = {};
+      ratings.forEach((item) => {
+        next[item.group_id] = item;
+      });
+      setRatingByGroupId(next);
+      if (bumpVersion) {
+        setRatingsVersion((value) => value + 1);
       }
-    })();
+    } catch (error) {
+      console.warn("Failed to load ratings", error);
+    }
+  };
+
+  useEffect(() => {
+    void loadRatings();
   }, [groups]);
 
   const pickTwo = (items: ImageItem[]) => {
@@ -195,6 +201,10 @@ export function useRankingController(groups: Group[]) {
       const ratingDistance = Math.abs(item.rating - previousRating);
       return (1 / (1 + item.matches)) * (1 + ratingDistance / 250);
     });
+    console.log(baseCurrentPool);
+
+    console.log(baseCurrentPool);
+    console.log(currentPool);
     const previousImages = await listImages(previousMeta.group.id);
     const currentImages = await listImages(currentMeta.group.id);
     if (previousImages.length === 0 || currentImages.length === 0) {
@@ -204,6 +214,8 @@ export function useRankingController(groups: Group[]) {
     const previousImage = pickOne(previousImages);
     const currentImage = pickOne(currentImages);
     const currentRating = ratingsById.get(currentMeta.group.id)?.rating ?? 1000;
+    console.log(currentMeta.group);
+    console.log(ratingsById.get(currentMeta.group.id));
     setRankingSequence({
       previousId: previousMeta.group.id,
       currentId: currentMeta.group.id,
@@ -272,6 +284,7 @@ export function useRankingController(groups: Group[]) {
     setRankingActive(false);
     setRankingPair(null);
     setRankingSequence(null);
+    void loadRatings(true);
   }
 
   async function submitRankingChoice(
@@ -314,6 +327,7 @@ export function useRankingController(groups: Group[]) {
     rankingMode,
     rankingSequence,
     ratingByGroupId,
+    ratingsVersion,
     startRanking,
     stopRanking,
     submitRankingChoice,

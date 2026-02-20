@@ -508,7 +508,8 @@ fn list_groups(
                 p.text AS label,
                 i.date AS date,
                 COUNT(i.id) AS size,
-                MIN(i.path) AS representative_path
+                MIN(i.path) AS representative_path,
+                NULL AS score
             FROM prompts p
             JOIN images i ON i.prompt_id = p.id
             WHERE (?1 IS NULL OR i.date = ?1)
@@ -527,7 +528,8 @@ fn list_groups(
                 p.text AS label,
                 i.date AS date,
                 COUNT(i.id) AS size,
-                MIN(i.path) AS representative_path
+                MIN(i.path) AS representative_path,
+                NULL AS score
             FROM prompts p
             JOIN images i ON i.prompt_id = p.id
             WHERE (?1 IS NULL OR i.date = ?1)
@@ -536,6 +538,27 @@ fn list_groups(
             "#
             .replace("{fts_where}", fts_filter),
             "ORDER BY group_type ASC, label DESC".to_string(),
+        )
+    } else if mode == "score" {
+        (
+            r#"
+            SELECT
+                'prompt' AS group_type,
+                p.id AS group_id,
+                p.text AS label,
+                NULL AS date,
+                COUNT(i.id) AS size,
+                MIN(i.path) AS representative_path,
+                COALESCE(r.rating, 1000) AS score
+            FROM prompts p
+            JOIN images i ON i.prompt_id = p.id
+            LEFT JOIN ratings r ON r.group_id = 'p:' || p.id
+            WHERE (?1 IS NULL OR i.date = ?1)
+              {fts_where}
+            GROUP BY p.id
+            "#
+            .replace("{fts_where}", fts_filter),
+            "ORDER BY score DESC, label DESC".to_string(),
         )
     } else {
         (
@@ -546,7 +569,8 @@ fn list_groups(
                 p.text AS label,
                 NULL AS date,
                 COUNT(i.id) AS size,
-                MIN(i.path) AS representative_path
+                MIN(i.path) AS representative_path,
+                NULL AS score
             FROM prompts p
             JOIN images i ON i.prompt_id = p.id
             WHERE (?1 IS NULL OR i.date = ?1)
@@ -580,7 +604,8 @@ fn list_groups(
                     b.date AS label,
                     b.date AS date,
                     COUNT(i.id) AS size,
-                    b.representative_path AS representative_path
+                    b.representative_path AS representative_path,
+                    NULL AS score
                 FROM batches b
                 JOIN images i ON i.batch_id = b.id
                 WHERE i.prompt_id IS NULL

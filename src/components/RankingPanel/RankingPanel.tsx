@@ -132,9 +132,6 @@ export default function RankingPanel() {
               src={convertFileSrc(rankingSequence.currentImage.path)}
               alt="Current"
             />
-            <div className="rating-chip">
-              {rankingSequence.currentRating.toFixed(1)}
-            </div>
           </div>
           <div className="ranking-controls ranking-controls--sequential">
             <button type="button" onClick={() => submitRankingChoice("left")}>
@@ -164,6 +161,11 @@ export default function RankingPanel() {
             <button type="button" onClick={stopRanking}>
               Stop Ranking
             </button>
+          </div>
+          <div className="ranking-current-statusbar">
+            <div className="rating-chip">
+              {rankingSequence.currentRating.toFixed(1)}
+            </div>
           </div>
           {showPreviousFull && (
             <div

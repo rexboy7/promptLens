@@ -142,3 +142,12 @@
   color: #f7f0ea;
   font-size: 0.85rem;
 }
+
+.ranking-current-statusbar {
+  position: absolute;
+  top: 8px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}

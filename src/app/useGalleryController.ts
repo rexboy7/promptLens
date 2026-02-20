@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useKeyboard } from "../hooks/useKeyboard";
@@ -20,7 +20,6 @@ export function useGalleryController() {
   const [dateFilter, setDateFilter] = useState("");
   const [searchText, setSearchText] = useState("");
   const [groupMode, setGroupMode] = useState<GroupMode>("prompt");
-  const [groupSort, setGroupSort] = useState<"default" | "score">("default");
   const [groups, setGroups] = useState<Group[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [images, setImages] = useState<ImageItem[]>([]);
@@ -32,26 +31,6 @@ export function useGalleryController() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isSlideshowRunning, setIsSlideshowRunning] = useState(false);
   const ranking = useRankingController(groups);
-  const orderedGroups = useMemo(() => {
-    if (groupSort !== "score") {
-      return groups;
-    }
-    const ratedGroups = [...groups];
-    ratedGroups.sort((a, b) => {
-      const aRating = ranking.ratingByGroupId[a.id]?.rating ?? 1000;
-      const bRating = ranking.ratingByGroupId[b.id]?.rating ?? 1000;
-      if (bRating !== aRating) {
-        return bRating - aRating;
-      }
-      const aMatches = ranking.ratingByGroupId[a.id]?.matches ?? 0;
-      const bMatches = ranking.ratingByGroupId[b.id]?.matches ?? 0;
-      if (aMatches !== bMatches) {
-        return aMatches - bMatches;
-      }
-      return a.label.localeCompare(b.label);
-    });
-    return ratedGroups;
-  }, [groupSort, groups, ranking.ratingByGroupId]);
 
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const slideshowRef = useRef<number | null>(null);
@@ -94,20 +73,20 @@ export function useGalleryController() {
   }, [selectedImageIndex, images.length]);
 
   const goPrevGroup = () => {
-    const currentIndex = orderedGroups.findIndex(
+    const currentIndex = groups.findIndex(
       (group) => group.id === selectedGroupId
     );
     if (currentIndex > 0) {
-      setSelectedGroupId(orderedGroups[currentIndex - 1].id);
+      setSelectedGroupId(groups[currentIndex - 1].id);
     }
   };
 
   const goNextGroup = () => {
-    const currentIndex = orderedGroups.findIndex(
+    const currentIndex = groups.findIndex(
       (group) => group.id === selectedGroupId
     );
-    if (currentIndex >= 0 && currentIndex < orderedGroups.length - 1) {
-      setSelectedGroupId(orderedGroups[currentIndex + 1].id);
+    if (currentIndex >= 0 && currentIndex < groups.length - 1) {
+      setSelectedGroupId(groups[currentIndex + 1].id);
     }
   };
 
@@ -198,7 +177,27 @@ export function useGalleryController() {
         setRecentRoots([]);
       }
     }
+    const storedMode = localStorage.getItem("promptlens.groupMode");
+    if (
+      storedMode === "prompt" ||
+      storedMode === "prompt_date" ||
+      storedMode === "date_prompt" ||
+      storedMode === "date" ||
+      storedMode === "score"
+    ) {
+      setGroupMode(storedMode);
+    }
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem("promptlens.groupMode", groupMode);
+  }, [groupMode]);
+
+  useEffect(() => {
+    if (groupMode === "score") {
+      void refreshGroups("score");
+    }
+  }, [groupMode, ranking.ratingsVersion]);
 
   useEffect(() => {
     if (!autoScanned && rootPath.trim()) {
@@ -370,9 +369,7 @@ export function useGalleryController() {
     setSearchText,
     groupMode,
     setGroupMode,
-    groups: orderedGroups,
-    groupSort,
-    setGroupSort,
+    groups,
     selectedGroupId,
     setSelectedGroupId,
     images,

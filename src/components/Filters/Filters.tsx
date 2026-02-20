@@ -5,12 +5,10 @@ export default function Filters() {
     searchText,
     dateFilter,
     groupMode,
-    groupSort,
     status,
     setSearchText,
     setDateFilter,
     setGroupMode,
-    setGroupSort,
     refreshGroups,
     extractPromptsAction,
   } = useGallery();
@@ -70,19 +68,13 @@ export default function Filters() {
         >
           Date
         </button>
-      </div>
-      <div className="mode-toggle">
         <button
           type="button"
-          className={groupSort === "default" ? "mode active" : "mode"}
-          onClick={() => setGroupSort("default")}
-        >
-          Default
-        </button>
-        <button
-          type="button"
-          className={groupSort === "score" ? "mode active" : "mode"}
-          onClick={() => setGroupSort("score")}
+          className={groupMode === "score" ? "mode active" : "mode"}
+          onClick={() => {
+            setGroupMode("score");
+            void refreshGroups("score");
+          }}
         >
           Score
         </button>
