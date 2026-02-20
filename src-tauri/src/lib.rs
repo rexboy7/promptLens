@@ -114,6 +114,9 @@ fn init_db(conn: &Connection) -> Result<(), String> {
             DROP TABLE IF EXISTS images;
             DROP TABLE IF EXISTS batches;
             DROP TABLE IF EXISTS prompts;
+            DROP TABLE IF EXISTS prompts_fts;
+            DROP TABLE IF EXISTS ratings;
+            DROP TABLE IF EXISTS comparisons;
             "#,
         )
         .map_err(|e| e.to_string())?;
@@ -767,7 +770,7 @@ fn delete_image(app: AppHandle, image_path: String) -> Result<bool, String> {
 
 #[tauri::command]
 fn get_ratings(app: AppHandle, group_ids: Vec<String>) -> Result<Vec<RatingItem>, String> {
-    let conn = open_db(&app)?;
+    let mut conn = open_db(&app)?;
     init_db(&conn)?;
 
     let tx = conn.transaction().map_err(|e| e.to_string())?;
@@ -805,7 +808,7 @@ fn submit_comparison(
     right_id: String,
     winner_id: String,
 ) -> Result<bool, String> {
-    let conn = open_db(&app)?;
+    let mut conn = open_db(&app)?;
     init_db(&conn)?;
 
     let tx = conn.transaction().map_err(|e| e.to_string())?;
@@ -838,14 +841,20 @@ fn submit_comparison(
     let expected_left = 1.0 / (1.0 + 10.0_f64.powf((right_rating - left_rating) / 400.0));
     let expected_right = 1.0 / (1.0 + 10.0_f64.powf((left_rating - right_rating) / 400.0));
     let k = 24.0;
-    let (left_score, right_score) = if winner_id == left_id {
-        (1.0, 0.0)
+    let (left_score, right_score, bonus) = if winner_id == left_id {
+        (1.0, 0.0, 0.0)
+    } else if winner_id == right_id {
+        (0.0, 1.0, 0.0)
+    } else if winner_id == "both_good" {
+        (0.5, 0.5, 4.0)
+    } else if winner_id == "both_bad" {
+        (0.5, 0.5, -4.0)
     } else {
-        (0.0, 1.0)
+        (0.5, 0.5, 0.0)
     };
 
-    let new_left = left_rating + k * (left_score - expected_left);
-    let new_right = right_rating + k * (right_score - expected_right);
+    let new_left = left_rating + k * (left_score - expected_left) + bonus;
+    let new_right = right_rating + k * (right_score - expected_right) + bonus;
 
     tx.execute(
         "UPDATE ratings SET rating = ?1, matches = ?2 WHERE group_id = ?3",
