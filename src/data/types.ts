@@ -31,6 +31,8 @@ export type RatingItem = {
   matches: number;
 };
 
+export type RankingMode = "pair" | "sequential";
+
 export type RankingPair = {
   leftId: string;
   rightId: string;
@@ -38,6 +40,15 @@ export type RankingPair = {
   rightImages: ImageItem[];
   leftRating: number;
   rightRating: number;
+};
+
+export type RankingSequence = {
+  previousId: string;
+  currentId: string;
+  previousImage: ImageItem;
+  currentImage: ImageItem;
+  previousRating: number;
+  currentRating: number;
 };
 
 export type GroupKey =

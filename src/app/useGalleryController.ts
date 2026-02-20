@@ -8,13 +8,12 @@ import {
   deleteGroup,
   deleteImage,
   extractPrompts as extractPromptsApi,
-  getRatings,
   listGroups,
   listImages,
   scanDirectory as scanDirectoryApi,
-  submitComparison,
 } from "../data/galleryApi";
-import type { Group, GroupMode, ImageItem, RankingPair } from "../data/types";
+import type { Group, GroupMode, ImageItem } from "../data/types";
+import { useRankingController } from "./useRankingController";
 
 export function useGalleryController() {
   const [rootPath, setRootPath] = useState("");
@@ -31,8 +30,7 @@ export function useGalleryController() {
   const [autoScanned, setAutoScanned] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isSlideshowRunning, setIsSlideshowRunning] = useState(false);
-  const [rankingActive, setRankingActive] = useState(false);
-  const [rankingPair, setRankingPair] = useState<RankingPair | null>(null);
+  const ranking = useRankingController(groups);
 
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const slideshowRef = useRef<number | null>(null);
@@ -338,128 +336,6 @@ export function useGalleryController() {
     }
   }
 
-  async function buildRankingPair() {
-    if (groups.length < 2) {
-      setRankingPair(null);
-      return;
-    }
-    const eligible = groups.filter((group) => group.size >= 2);
-    if (eligible.length < 2) {
-      setRankingPair(null);
-      return;
-    }
-    const ratings = await getRatings(eligible.map((group) => group.id));
-    const ratingsById = new Map(ratings.map((item) => [item.group_id, item]));
-    const withMeta = eligible.map((group) => ({
-      group,
-      rating: ratingsById.get(group.id)?.rating ?? 1000,
-      matches: ratingsById.get(group.id)?.matches ?? 0,
-    }));
-    const pickWeighted = (
-      items: typeof withMeta,
-      weightFn: (item: (typeof withMeta)[number]) => number
-    ) => {
-      const weights = items.map((item) => Math.max(0.01, weightFn(item)));
-      const total = weights.reduce((sum, value) => sum + value, 0);
-      let roll = Math.random() * total;
-      for (let i = 0; i < items.length; i += 1) {
-        roll -= weights[i];
-        if (roll <= 0) {
-          return items[i];
-        }
-      }
-      return items[items.length - 1];
-    };
-    const leftMeta = pickWeighted(withMeta, (item) => 1 / (1 + item.matches));
-    const leftRating = leftMeta.rating;
-    const rightPool = withMeta.filter((item) => item.group.id !== leftMeta.group.id);
-    const rightMeta = pickWeighted(rightPool, (item) => {
-      const ratingDistance = Math.abs(item.rating - leftRating);
-      return (1 / (1 + item.matches)) * (1 + ratingDistance / 250);
-    });
-    const leftGroup = leftMeta.group;
-    const rightGroup = rightMeta.group;
-    const leftImages = await listImages(leftGroup.id);
-    const rightImages = await listImages(rightGroup.id);
-    if (leftImages.length < 2 || rightImages.length < 2) {
-      setRankingPair(null);
-      return;
-    }
-    const pickTwo = (items: ImageItem[]) => {
-      const first = items[Math.floor(Math.random() * items.length)];
-      let second = items[Math.floor(Math.random() * items.length)];
-      while (second.path === first.path && items.length > 1) {
-        second = items[Math.floor(Math.random() * items.length)];
-      }
-      return [first, second];
-    };
-    const leftPick = pickTwo(leftImages);
-    const rightPick = pickTwo(rightImages);
-    const rightRating = ratingsById.get(rightGroup.id)?.rating ?? 1000;
-    setRankingPair({
-      leftId: leftGroup.id,
-      rightId: rightGroup.id,
-      leftImages: leftPick,
-      rightImages: rightPick,
-      leftRating,
-      rightRating,
-    });
-  }
-
-  async function rerollRankingImages(target: "left" | "right" | "both" = "both") {
-    if (!rankingPair) return;
-    const pickTwo = (items: ImageItem[]) => {
-      const first = items[Math.floor(Math.random() * items.length)];
-      let second = items[Math.floor(Math.random() * items.length)];
-      while (second.path === first.path && items.length > 1) {
-        second = items[Math.floor(Math.random() * items.length)];
-      }
-      return [first, second];
-    };
-    const [leftImages, rightImages] = await Promise.all([
-      target === "right" ? Promise.resolve(rankingPair.leftImages) : listImages(rankingPair.leftId),
-      target === "left" ? Promise.resolve(rankingPair.rightImages) : listImages(rankingPair.rightId),
-    ]);
-    if (leftImages.length < 2 || rightImages.length < 2) {
-      return;
-    }
-    const leftPick = target === "right" ? rankingPair.leftImages : pickTwo(leftImages);
-    const rightPick = target === "left" ? rankingPair.rightImages : pickTwo(rightImages);
-    setRankingPair({
-      ...rankingPair,
-      leftImages: leftPick,
-      rightImages: rightPick,
-    });
-  }
-
-  async function startRanking() {
-    setRankingActive(true);
-    await buildRankingPair();
-  }
-
-  function stopRanking() {
-    setRankingActive(false);
-    setRankingPair(null);
-  }
-
-  async function submitRankingChoice(
-    side: "left" | "right" | "both_good" | "both_bad"
-  ) {
-    if (!rankingPair) return;
-    const winnerId =
-      side === "left"
-        ? rankingPair.leftId
-        : side === "right"
-          ? rankingPair.rightId
-          : side;
-    await submitComparison({
-      leftId: rankingPair.leftId,
-      rightId: rankingPair.rightId,
-      winnerId,
-    });
-    await buildRankingPair();
-  }
-
   return {
     rootPath,
     setRootPath,
@@ -500,12 +376,7 @@ export function useGalleryController() {
     deleteCurrentImage,
     deleteCurrentGroup,
     extractPromptsAction,
-    rankingActive,
-    rankingPair,
-    startRanking,
-    stopRanking,
-    submitRankingChoice,
-    rerollRankingImages,
+    ...ranking,
     goPrevGroup,
     goNextGroup,
     goPrevImage,

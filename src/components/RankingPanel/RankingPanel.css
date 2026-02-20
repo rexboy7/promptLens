@@ -30,6 +30,79 @@
   overflow: auto;
 }
 
+.ranking-overlay--sequential {
+  background: rgba(10, 8, 6, 0.75);
+}
+
+.ranking-panel--sequential {
+  background: transparent;
+  border: none;
+  display: block;
+  padding: 0;
+  position: relative;
+}
+
+.ranking-seq-previous {
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+  z-index: 2;
+}
+
+.ranking-seq-previous img {
+  width: 220px;
+  height: 160px;
+  object-fit: contain;
+  border-radius: 12px;
+  background: #1e1a16;
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+.ranking-seq-current {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ranking-seq-current img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.ranking-controls--sequential {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 3;
+}
+
+.ranking-seq-preview {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 8, 6, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+}
+
+.ranking-seq-preview img {
+  width: 90vw;
+  height: 90vh;
+  object-fit: contain;
+  background: #1e1a16;
+  border-radius: 16px;
+}
+
 .ranking-column {
   display: flex;
   flex-direction: column;
