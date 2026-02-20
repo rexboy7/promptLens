@@ -40,6 +40,48 @@ export function useRankingController(groups: Group[]) {
     return items[items.length - 1];
   };
 
+  const buildLowMatchPool = <T extends { matches: number; group?: Group }>(
+    items: T[],
+    excludeId?: string,
+    minSize = 2
+  ) => {
+    const filtered = excludeId
+      ? items.filter((item) => item.group?.id !== excludeId)
+      : items;
+    if (filtered.length <= minSize) {
+      return filtered;
+    }
+    const matchesSorted = [...filtered].sort((a, b) => a.matches - b.matches);
+    let threshold = matchesSorted[0].matches;
+    let pool = matchesSorted.filter((item) => item.matches <= threshold);
+    while (pool.length < minSize && threshold < matchesSorted[matchesSorted.length - 1].matches) {
+      threshold += 1;
+      pool = matchesSorted.filter((item) => item.matches <= threshold);
+    }
+    return pool;
+  };
+
+  const maybeExpandPool = <T extends { matches: number; group?: Group }>(
+    items: T[],
+    basePool: T[],
+    minSize: number,
+    exploreChance = 0.2
+  ) => {
+    if (items.length <= minSize) {
+      return items;
+    }
+    if (Math.random() > exploreChance) {
+      return basePool;
+    }
+    const expanded = items.filter((item) => !basePool.includes(item));
+    const sampleSize = Math.max(minSize, Math.ceil(items.length * 0.4));
+    if (expanded.length === 0) {
+      return basePool;
+    }
+    const shuffled = [...expanded].sort(() => Math.random() - 0.5);
+    return [...basePool, ...shuffled.slice(0, sampleSize)];
+  };
+
   async function buildRankingPair() {
     if (groups.length < 2) {
       setRankingPair(null);
@@ -57,9 +99,16 @@ export function useRankingController(groups: Group[]) {
       rating: ratingsById.get(group.id)?.rating ?? 1000,
       matches: ratingsById.get(group.id)?.matches ?? 0,
     }));
-    const leftMeta = pickWeighted(withMeta, (item) => 1 / (1 + item.matches));
+    const baseLeftPool = buildLowMatchPool(withMeta);
+    const leftPool = maybeExpandPool(withMeta, baseLeftPool, 2);
+    const leftMeta = pickWeighted(leftPool, (item) => 1 / (1 + item.matches));
     const leftRating = leftMeta.rating;
-    const rightPool = withMeta.filter((item) => item.group.id !== leftMeta.group.id);
+    const baseRightPool = buildLowMatchPool(withMeta, leftMeta.group.id);
+    const rightPool = maybeExpandPool(
+      withMeta.filter((item) => item.group.id !== leftMeta.group.id),
+      baseRightPool,
+      2
+    );
     const rightMeta = pickWeighted(rightPool, (item) => {
       const ratingDistance = Math.abs(item.rating - leftRating);
       return (1 / (1 + item.matches)) * (1 + ratingDistance / 250);
@@ -104,14 +153,20 @@ export function useRankingController(groups: Group[]) {
     }));
     const previousMeta = previousId
       ? withMeta.find((item) => item.group.id === previousId)
-      : pickWeighted(withMeta, (item) => 1 / (1 + item.matches));
+      : pickWeighted(
+          maybeExpandPool(withMeta, buildLowMatchPool(withMeta, undefined, 1), 1),
+          (item) => 1 / (1 + item.matches)
+        );
     if (!previousMeta) {
       setRankingSequence(null);
       return;
     }
     const previousRating = previousMeta.rating;
-    const currentPool = withMeta.filter(
-      (item) => item.group.id !== previousMeta.group.id
+    const baseCurrentPool = buildLowMatchPool(withMeta, previousMeta.group.id, 1);
+    const currentPool = maybeExpandPool(
+      withMeta.filter((item) => item.group.id !== previousMeta.group.id),
+      baseCurrentPool,
+      1
     );
     const currentMeta = pickWeighted(currentPool, (item) => {
       const ratingDistance = Math.abs(item.rating - previousRating);
@@ -166,6 +221,17 @@ export function useRankingController(groups: Group[]) {
     setRankingSequence({
       ...rankingSequence,
       currentImage,
+    });
+  }
+
+  async function rerollRankingSequencePreviousImage() {
+    if (!rankingSequence) return;
+    const previousImages = await listImages(rankingSequence.previousId);
+    if (previousImages.length === 0) return;
+    const previousImage = pickOne(previousImages);
+    setRankingSequence({
+      ...rankingSequence,
+      previousImage,
     });
   }
 
@@ -229,5 +295,6 @@ export function useRankingController(groups: Group[]) {
     submitRankingChoice,
     rerollRankingImages,
     rerollRankingSequenceImage,
+    rerollRankingSequencePreviousImage,
   };
 }

@@ -14,6 +14,7 @@ export default function RankingPanel() {
     submitRankingChoice,
     rerollRankingImages,
     rerollRankingSequenceImage,
+    rerollRankingSequencePreviousImage,
   } = useGallery();
   const [showPreviousFull, setShowPreviousFull] = useState(false);
 
@@ -50,7 +51,11 @@ export default function RankingPanel() {
       if (event.key.toLowerCase() === "w") {
         event.preventDefault();
         if (rankingMode === "sequential") {
-          rerollRankingSequenceImage();
+          if (event.metaKey) {
+            rerollRankingSequencePreviousImage();
+          } else {
+            rerollRankingSequenceImage();
+          }
         } else {
           rerollRankingImages("both");
         }
@@ -152,6 +157,9 @@ export default function RankingPanel() {
             </button>
             <button type="button" onClick={rerollRankingSequenceImage}>
               Swap Current (W)
+            </button>
+            <button type="button" onClick={rerollRankingSequencePreviousImage}>
+              Swap Previous (Cmd+W)
             </button>
             <button type="button" onClick={stopRanking}>
               Stop Ranking
