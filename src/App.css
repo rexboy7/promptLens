@@ -176,6 +176,11 @@ button:hover {
   -webkit-box-orient: vertical;
 }
 
+.group-rating {
+  color: #8b7b6f;
+  font-size: 0.8rem;
+}
+
 .group-subtle {
   color: #8b7b6f;
   font-size: 0.8rem;

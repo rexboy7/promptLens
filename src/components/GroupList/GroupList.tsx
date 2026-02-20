@@ -8,12 +8,17 @@ export default function GroupList() {
     groupRefs,
     truncateLabel,
     setSelectedGroupId,
+    ratingByGroupId,
   } = useGallery();
   return (
     <aside className="group-list">
       {groups.map((group) => {
         const thumbSrc = convertFileSrc(group.representative_path);
         const displayLabel = truncateLabel(group.label, 120);
+        const rating = ratingByGroupId[group.id];
+        const ratingText = rating
+          ? `${Math.round(rating.rating)} • ${rating.matches} matches`
+          : "Score —";
         return (
           <button
             key={group.id}
@@ -35,9 +40,10 @@ export default function GroupList() {
                   ? "Date + Prompt"
                   : group.group_type === "date"
                   ? "Date"
-                  : "Batch"}{" "}
+                : "Batch"}{" "}
                 • {group.size} images
               </span>
+              <span className="group-rating">{ratingText}</span>
               <span className="group-count" title={group.label}>
                 {displayLabel}
               </span>

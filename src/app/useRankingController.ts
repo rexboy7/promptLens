@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getRatings, listImages, submitComparison } from "../data/galleryApi";
 import type {
   Group,
   ImageItem,
+  RatingItem,
   RankingMode,
   RankingPair,
   RankingSequence,
@@ -14,6 +15,28 @@ export function useRankingController(groups: Group[]) {
   const [rankingMode, setRankingMode] = useState<RankingMode>("pair");
   const [rankingSequence, setRankingSequence] =
     useState<RankingSequence | null>(null);
+  const [ratingByGroupId, setRatingByGroupId] = useState<
+    Record<string, RatingItem>
+  >({});
+
+  useEffect(() => {
+    if (groups.length === 0) {
+      setRatingByGroupId({});
+      return;
+    }
+    void (async () => {
+      try {
+        const ratings = await getRatings(groups.map((group) => group.id));
+        const next: Record<string, RatingItem> = {};
+        ratings.forEach((item) => {
+          next[item.group_id] = item;
+        });
+        setRatingByGroupId(next);
+      } catch (error) {
+        console.warn("Failed to load ratings", error);
+      }
+    })();
+  }, [groups]);
 
   const pickTwo = (items: ImageItem[]) => {
     const first = items[Math.floor(Math.random() * items.length)];
@@ -290,6 +313,7 @@ export function useRankingController(groups: Group[]) {
     rankingPair,
     rankingMode,
     rankingSequence,
+    ratingByGroupId,
     startRanking,
     stopRanking,
     submitRankingChoice,
