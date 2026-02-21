@@ -69,46 +69,25 @@ export function useRankingController(groups: Group[]) {
     return items[items.length - 1];
   };
 
-  const buildLowMatchPool = <T extends { matches: number; group?: Group }>(
+  const pickTiered = <T extends { matches: number }>(
     items: T[],
-    excludeId?: string,
-    minSize = 2
+    weightFn: (item: T) => number
   ) => {
-    const filtered = excludeId
-      ? items.filter((item) => item.group?.id !== excludeId)
-      : items;
-    if (filtered.length <= minSize) {
-      return filtered;
+    if (items.length === 0) {
+      throw new Error("No items to pick from");
     }
-    const matchesSorted = [...filtered].sort((a, b) => a.matches - b.matches);
-    let threshold = matchesSorted[0].matches;
-    let pool = matchesSorted.filter((item) => item.matches <= threshold);
-    while (pool.length < minSize && threshold < matchesSorted[matchesSorted.length - 1].matches) {
-      threshold += 1;
-      pool = matchesSorted.filter((item) => item.matches <= threshold);
+    if (items.length < 3) {
+      return pickWeighted(items, weightFn);
     }
-    return pool;
-  };
-
-  const maybeExpandPool = <T extends { matches: number; group?: Group }>(
-    items: T[],
-    basePool: T[],
-    minSize: number,
-    exploreChance = 0.2
-  ) => {
-    if (items.length <= minSize) {
-      return items;
-    }
-    if (Math.random() > exploreChance) {
-      return basePool;
-    }
-    const expanded = items.filter((item) => !basePool.includes(item));
-    const sampleSize = Math.max(minSize, Math.ceil(items.length * 0.4));
-    if (expanded.length === 0) {
-      return basePool;
-    }
-    const shuffled = [...expanded].sort(() => Math.random() - 0.5);
-    return [...basePool, ...shuffled.slice(0, sampleSize)];
+    const sorted = [...items].sort((a, b) => a.matches - b.matches);
+    const third = Math.ceil(sorted.length / 3);
+    const low = sorted.slice(0, third);
+    const mid = sorted.slice(third, Math.min(sorted.length, third * 2));
+    const high = sorted.slice(Math.min(sorted.length, third * 2));
+    const roll = Math.random();
+    const tier =
+      roll < 0.6 ? low : roll < 0.85 ? mid : high.length > 0 ? high : mid;
+    return pickWeighted(tier.length > 0 ? tier : sorted, weightFn);
   };
 
   async function buildRankingPair() {
@@ -128,17 +107,10 @@ export function useRankingController(groups: Group[]) {
       rating: ratingsById.get(group.id)?.rating ?? 1000,
       matches: ratingsById.get(group.id)?.matches ?? 0,
     }));
-    const baseLeftPool = buildLowMatchPool(withMeta);
-    const leftPool = maybeExpandPool(withMeta, baseLeftPool, 2);
-    const leftMeta = pickWeighted(leftPool, (item) => 1 / (1 + item.matches));
+    const leftMeta = pickTiered(withMeta, (item) => 1 / (1 + item.matches));
     const leftRating = leftMeta.rating;
-    const baseRightPool = buildLowMatchPool(withMeta, leftMeta.group.id);
-    const rightPool = maybeExpandPool(
-      withMeta.filter((item) => item.group.id !== leftMeta.group.id),
-      baseRightPool,
-      2
-    );
-    const rightMeta = pickWeighted(rightPool, (item) => {
+    const rightPool = withMeta.filter((item) => item.group.id !== leftMeta.group.id);
+    const rightMeta = pickTiered(rightPool, (item) => {
       const ratingDistance = Math.abs(item.rating - leftRating);
       return (1 / (1 + item.matches)) * (1 + ratingDistance / 250);
     });
@@ -182,29 +154,19 @@ export function useRankingController(groups: Group[]) {
     }));
     const previousMeta = previousId
       ? withMeta.find((item) => item.group.id === previousId)
-      : pickWeighted(
-          maybeExpandPool(withMeta, buildLowMatchPool(withMeta, undefined, 1), 1),
-          (item) => 1 / (1 + item.matches)
-        );
+      : pickTiered(withMeta, (item) => 1 / (1 + item.matches));
     if (!previousMeta) {
       setRankingSequence(null);
       return;
     }
     const previousRating = previousMeta.rating;
-    const baseCurrentPool = buildLowMatchPool(withMeta, previousMeta.group.id, 1);
-    const currentPool = maybeExpandPool(
-      withMeta.filter((item) => item.group.id !== previousMeta.group.id),
-      baseCurrentPool,
-      1
+    const currentPool = withMeta.filter(
+      (item) => item.group.id !== previousMeta.group.id
     );
-    const currentMeta = pickWeighted(currentPool, (item) => {
+    const currentMeta = pickTiered(currentPool, (item) => {
       const ratingDistance = Math.abs(item.rating - previousRating);
       return (1 / (1 + item.matches)) * (1 + ratingDistance / 250);
     });
-    console.log(baseCurrentPool);
-
-    console.log(baseCurrentPool);
-    console.log(currentPool);
     const previousImages = await listImages(previousMeta.group.id);
     const currentImages = await listImages(currentMeta.group.id);
     if (previousImages.length === 0 || currentImages.length === 0) {
@@ -214,8 +176,6 @@ export function useRankingController(groups: Group[]) {
     const previousImage = pickOne(previousImages);
     const currentImage = pickOne(currentImages);
     const currentRating = ratingsById.get(currentMeta.group.id)?.rating ?? 1000;
-    console.log(currentMeta.group);
-    console.log(ratingsById.get(currentMeta.group.id));
     setRankingSequence({
       previousId: previousMeta.group.id,
       currentId: currentMeta.group.id,
