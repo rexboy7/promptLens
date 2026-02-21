@@ -8,12 +8,12 @@ import {
   deleteGroup,
   deleteImage,
   extractPrompts as extractPromptsApi,
+  getRatings,
   listGroups,
   listImages,
   scanDirectory as scanDirectoryApi,
 } from "../data/galleryApi";
-import type { Group, GroupMode, ImageItem } from "../data/types";
-import { useRankingController } from "./useRankingController";
+import type { Group, GroupMode, ImageItem, RatingItem, RankingMode } from "../data/types";
 
 export function useGalleryController() {
   const [rootPath, setRootPath] = useState("");
@@ -30,7 +30,12 @@ export function useGalleryController() {
   const [autoScanned, setAutoScanned] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isSlideshowRunning, setIsSlideshowRunning] = useState(false);
-  const ranking = useRankingController(groups);
+  const [rankingActive, setRankingActive] = useState(false);
+  const [rankingMode, setRankingMode] = useState<RankingMode>("sequential");
+  const [ratingByGroupId, setRatingByGroupId] = useState<
+    Record<string, RatingItem>
+  >({});
+  const [ratingsVersion, setRatingsVersion] = useState(0);
 
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const slideshowRef = useRef<number | null>(null);
@@ -197,7 +202,7 @@ export function useGalleryController() {
     if (groupMode === "score") {
       void refreshGroups("score");
     }
-  }, [groupMode, ranking.ratingsVersion]);
+  }, [groupMode, ratingsVersion]);
 
   useEffect(() => {
     if (!autoScanned && rootPath.trim()) {
@@ -360,6 +365,40 @@ export function useGalleryController() {
     }
   }
 
+  const loadRatings = async (bumpVersion = false) => {
+    if (groups.length === 0) {
+      setRatingByGroupId({});
+      return;
+    }
+    try {
+      const ratings = await getRatings(groups.map((group) => group.id));
+      const next: Record<string, RatingItem> = {};
+      ratings.forEach((item) => {
+        next[item.group_id] = item;
+      });
+      setRatingByGroupId(next);
+      if (bumpVersion) {
+        setRatingsVersion((value) => value + 1);
+      }
+    } catch (error) {
+      console.warn("Failed to load ratings", error);
+    }
+  };
+
+  useEffect(() => {
+    void loadRatings();
+  }, [groups]);
+
+  async function startRanking(mode: RankingMode = "sequential") {
+    setRankingMode(mode);
+    setRankingActive(true);
+  }
+
+  function stopRanking() {
+    setRankingActive(false);
+    void loadRatings(true);
+  }
+
   return {
     rootPath,
     setRootPath,
@@ -400,7 +439,12 @@ export function useGalleryController() {
     deleteCurrentImage,
     deleteCurrentGroup,
     extractPromptsAction,
-    ...ranking,
+    rankingActive,
+    rankingMode,
+    ratingByGroupId,
+    ratingsVersion,
+    startRanking,
+    stopRanking,
     goPrevGroup,
     goNextGroup,
     goPrevImage,

@@ -1,5 +1,6 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useGallery } from "../../app/GalleryContext";
+import ImageMeta from "../ImageMeta";
 
 export default function Viewer() {
   const {
@@ -23,7 +24,6 @@ export default function Viewer() {
         <span>
           {selectedImageIndex + 1} / {images.length}
         </span>
-        {selectedGroup?.date && <span>{selectedGroup.date}</span>}
         <button
           type="button"
           className="viewer-toggle"
@@ -34,6 +34,14 @@ export default function Viewer() {
         >
           {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
         </button>
+      </div>
+      <div className="viewer-meta" onClick={(event) => event.stopPropagation()}>
+        <ImageMeta
+          className="image-meta--viewer"
+          date={selectedGroup?.date}
+          serial={image.serial}
+          prompt={selectedGroup?.label}
+        />
       </div>
       <button
         type="button"
