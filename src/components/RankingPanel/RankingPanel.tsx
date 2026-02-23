@@ -283,7 +283,10 @@ export default function RankingPanel() {
     const currentPool = withMeta.filter(
       (item) => item.group.id !== previousMeta.group.id
     );
-    const currentMeta = pickTiered(currentPool, (item) => {
+    const freshCurrentPool = currentPool.filter((item) => item.matches === 0);
+    const currentCandidates =
+      freshCurrentPool.length > 0 ? freshCurrentPool : currentPool;
+    const currentMeta = pickTiered(currentCandidates, (item) => {
       const ratingDistance = Math.abs(item.rating - previousRating);
       return (1 / (1 + item.matches)) * (1 + ratingDistance / 250);
     });
