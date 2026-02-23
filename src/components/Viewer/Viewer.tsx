@@ -20,21 +20,6 @@ export default function Viewer() {
 
   return (
     <div className="viewer" onClick={stopSlideshowAndCloseViewer} ref={viewerRef}>
-      <div className="viewer-toolbar" onClick={(event) => event.stopPropagation()}>
-        <span>
-          {selectedImageIndex + 1} / {images.length}
-        </span>
-        <button
-          type="button"
-          className="viewer-toggle"
-          onClick={(event) => {
-            event.stopPropagation();
-            void toggleFullscreen();
-          }}
-        >
-          {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
-        </button>
-      </div>
       <div className="viewer-meta" onClick={(event) => event.stopPropagation()}>
         <ImageMeta
           className="image-meta--viewer"
@@ -71,8 +56,25 @@ export default function Viewer() {
       >
         Next
       </button>
-      <div className="viewer-hint">
-        Arrow keys: prev/next image, up/down group, Enter to open, Esc to close
+      <div className="viewer-toolbar" onClick={(event) => event.stopPropagation()}>
+        <div>
+          <span>
+            {selectedImageIndex + 1} / {images.length}
+          </span>
+          <button
+            type="button"
+            className="viewer-toggle"
+            onClick={(event) => {
+              event.stopPropagation();
+              void toggleFullscreen();
+            }}
+          >
+            {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+          </button>
+        </div>
+        <div className="viewer-hint">
+          Arrow keys: prev/next image, up/down group, Enter to open, Esc to close
+        </div>
       </div>
     </div>
   );

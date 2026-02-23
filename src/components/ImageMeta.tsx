@@ -11,7 +11,7 @@ export default function ImageMeta({
   serial,
   prompt,
   className,
-  maxPromptLength = 160,
+  maxPromptLength = 640,
 }: ImageMetaProps) {
   const dateText = date && date.trim() ? date : "—";
   const serialText = typeof serial === "number" ? String(serial) : "—";
@@ -23,8 +23,10 @@ export default function ImageMeta({
 
   return (
     <div className={`image-meta${className ? ` ${className}` : ""}`}>
-      <span>Date: {dateText}</span>
-      <span>Serial: {serialText}</span>
+      <div>
+        <span>Serial: {serialText}</span>&nbsp;|&nbsp;
+        <span>Date: {dateText}</span>
+      </div>
       <span className="image-meta__prompt" title={promptText}>
         Prompt: {shortPrompt}
       </span>

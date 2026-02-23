@@ -234,11 +234,10 @@ button:hover {
   font-size: 0.78rem;
   line-height: 1.35;
   color: #efe7dd;
-  background: rgba(21, 18, 16, 0.68);
-  border: 1px solid rgba(247, 240, 234, 0.2);
-  border-radius: 10px;
+  background: rgba(21, 18, 16, 0.28);
+  /*border: 1px solid rgba(247, 240, 234, 0.2);
+  border-radius: 10px; */
   padding: 8px 10px;
-  max-width: 360px;
 }
 
 .image-meta__prompt {
@@ -248,11 +247,11 @@ button:hover {
 }
 
 .image-meta--viewer {
-  background: rgba(21, 18, 16, 0.62);
+  background: rgba(21, 18, 16, 0.28);
 }
 
 .image-meta--overlay {
-  background: rgba(18, 16, 14, 0.78);
+  background: rgba(18, 16, 14, 0.28);
 }
 
 .image:hover .image-caption,
@@ -282,16 +281,23 @@ button:hover {
 
 .viewer-toolbar {
   display: flex;
-  gap: 16px;
+  flex-direction:column;
+  gap: 4px;
   color: #f7f0ea;
   font-size: 0.9rem;
   align-items: center;
+  position: fixed;
+  bottom: 0;
+  width: 100%;
 }
 
 .viewer-meta {
   display: flex;
   justify-content: center;
-  width: min(92vw, 860px);
+  width: 100%;
+  position: fixed;
+  top: 0;
+  width: 100%;
 }
 
 .viewer-toggle {
@@ -331,6 +337,7 @@ button:hover {
 .viewer-image {
   max-width: 92vw;
   max-height: 86vh;
+
   border-radius: 16px;
   box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4);
 }

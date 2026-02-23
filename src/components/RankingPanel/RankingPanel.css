@@ -44,8 +44,8 @@
 
 .ranking-seq-previous {
   position: absolute;
-  top: 24px;
-  left: 24px;
+  bottom: 24px;
+  top: 90px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -168,7 +168,7 @@
 .ranking-seq-preview-image .image-meta {
   position: absolute;
   left: 10px;
-  bottom: 10px;
+  top: 10px;
   max-width: calc(100% - 20px);
 }
 
