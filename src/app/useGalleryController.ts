@@ -371,10 +371,47 @@ export function useGalleryController() {
       return;
     }
     try {
-      const ratings = await getRatings(groups.map((group) => group.id));
-      const next: Record<string, RatingItem> = {};
+      const ratingKeys = Array.from(
+        new Set(
+          groups
+            .map((group) => {
+              if (group.group_type === "prompt_date" || group.group_type === "date_prompt") {
+                const parts = group.id.split(":", 3);
+                if (parts.length === 3) {
+                  return `p:${parts[1]}`;
+                }
+              }
+              if (group.group_type === "prompt" || group.group_type === "score") {
+                return group.id;
+              }
+              return null;
+            })
+            .filter((value): value is string => Boolean(value))
+        )
+      );
+      const ratings = await getRatings(ratingKeys);
+      const ratingByKey: Record<string, RatingItem> = {};
       ratings.forEach((item) => {
-        next[item.group_id] = item;
+        ratingByKey[item.group_id] = item;
+      });
+      const next: Record<string, RatingItem> = {};
+      groups.forEach((group) => {
+        if (group.group_type === "prompt_date" || group.group_type === "date_prompt") {
+          const parts = group.id.split(":", 3);
+          if (parts.length === 3) {
+            const rating = ratingByKey[`p:${parts[1]}`];
+            if (rating) {
+              next[group.id] = rating;
+            }
+          }
+          return;
+        }
+        if (group.group_type === "prompt" || group.group_type === "score") {
+          const rating = ratingByKey[group.id];
+          if (rating) {
+            next[group.id] = rating;
+          }
+        }
       });
       setRatingByGroupId(next);
       if (bumpVersion) {
