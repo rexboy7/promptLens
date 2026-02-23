@@ -852,7 +852,7 @@ fn get_ratings(app: AppHandle, group_ids: Vec<String>) -> Result<Vec<RatingItem>
     init_db(&conn)?;
 
     let tx = conn.transaction().map_err(|e| e.to_string())?;
-    let mut lookup_ids: Vec<String> = Vec::with_capacity(group_ids.len());
+    let mut lookup_ids: Vec<Option<String>> = Vec::with_capacity(group_ids.len());
     for id in &group_ids {
         let lookup = if id.starts_with("pd:") {
             let parts: Vec<&str> = id.splitn(3, ':').collect();
@@ -861,6 +861,9 @@ fn get_ratings(app: AppHandle, group_ids: Vec<String>) -> Result<Vec<RatingItem>
             } else {
                 id.clone()
             }
+        } else if id.starts_with("b:") || id.starts_with("d:") {
+            lookup_ids.push(None);
+            continue;
         } else {
             id.clone()
         };
@@ -869,7 +872,7 @@ fn get_ratings(app: AppHandle, group_ids: Vec<String>) -> Result<Vec<RatingItem>
             params![lookup],
         )
         .map_err(|e| e.to_string())?;
-        lookup_ids.push(lookup);
+        lookup_ids.push(Some(lookup));
     }
     tx.commit().map_err(|e| e.to_string())?;
 
@@ -878,6 +881,7 @@ fn get_ratings(app: AppHandle, group_ids: Vec<String>) -> Result<Vec<RatingItem>
         .map_err(|e| e.to_string())?;
     let mut results = Vec::new();
     for (id, lookup) in group_ids.into_iter().zip(lookup_ids.into_iter()) {
+        let Some(lookup) = lookup else { continue; };
         if let Ok(item) = stmt.query_row(params![lookup], |row| {
             Ok(RatingItem {
                 group_id: id.clone(),
