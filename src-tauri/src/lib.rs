@@ -999,7 +999,9 @@ fn get_rating_percentiles(
     init_db(&conn)?;
 
     let mut stmt = conn
-        .prepare("SELECT rating FROM ratings WHERE matches > 0 ORDER BY rating ASC")
+        .prepare(
+            "SELECT rating FROM ratings WHERE matches > 0 AND group_id LIKE 'p:%' ORDER BY rating ASC",
+        )
         .map_err(|e| e.to_string())?;
     let ratings: Vec<f64> = stmt
         .query_map([], |row| row.get(0))
