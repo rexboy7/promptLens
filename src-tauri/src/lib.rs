@@ -599,7 +599,7 @@ fn list_groups(
                 'prompt' AS group_type,
                 p.id AS group_id,
                 p.text AS label,
-                NULL AS date,
+                MAX(i.date) AS date,
                 COUNT(i.id) AS size,
                 MIN(i.path) AS representative_path,
                 COALESCE(r.rating, 1000) AS score
@@ -620,7 +620,7 @@ fn list_groups(
                 'prompt' AS group_type,
                 p.id AS group_id,
                 p.text AS label,
-                NULL AS date,
+                MAX(i.date) AS date,
                 COUNT(i.id) AS size,
                 MIN(i.path) AS representative_path,
                 NULL AS score
