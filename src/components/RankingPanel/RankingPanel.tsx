@@ -45,7 +45,7 @@ export default function RankingPanel() {
   async function fetchRankingGroups() {
     try {
       const result = await listGroups({
-        groupMode: "prompt_date",
+        groupMode: "prompt",
         dateFilter: null,
         searchText: null,
       });
