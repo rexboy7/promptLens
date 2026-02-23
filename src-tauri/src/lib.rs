@@ -852,12 +852,24 @@ fn get_ratings(app: AppHandle, group_ids: Vec<String>) -> Result<Vec<RatingItem>
     init_db(&conn)?;
 
     let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let mut lookup_ids: Vec<String> = Vec::with_capacity(group_ids.len());
     for id in &group_ids {
+        let lookup = if id.starts_with("pd:") {
+            let parts: Vec<&str> = id.splitn(3, ':').collect();
+            if parts.len() == 3 {
+                format!("p:{}", parts[1])
+            } else {
+                id.clone()
+            }
+        } else {
+            id.clone()
+        };
         tx.execute(
             "INSERT OR IGNORE INTO ratings (group_id, rating, matches) VALUES (?1, 1000.0, 0)",
-            params![id],
+            params![lookup],
         )
         .map_err(|e| e.to_string())?;
+        lookup_ids.push(lookup);
     }
     tx.commit().map_err(|e| e.to_string())?;
 
@@ -865,10 +877,10 @@ fn get_ratings(app: AppHandle, group_ids: Vec<String>) -> Result<Vec<RatingItem>
         .prepare("SELECT group_id, rating, matches FROM ratings WHERE group_id = ?1")
         .map_err(|e| e.to_string())?;
     let mut results = Vec::new();
-    for id in group_ids {
-        if let Ok(item) = stmt.query_row(params![id], |row| {
+    for (id, lookup) in group_ids.into_iter().zip(lookup_ids.into_iter()) {
+        if let Ok(item) = stmt.query_row(params![lookup], |row| {
             Ok(RatingItem {
-                group_id: row.get(0)?,
+                group_id: id.clone(),
                 rating: row.get(1)?,
                 matches: row.get(2)?,
             })
