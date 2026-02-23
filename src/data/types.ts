@@ -54,6 +54,8 @@ export type RankingSequence = {
   currentImage: ImageItem;
   previousRating: number;
   currentRating: number;
+  previousMatches: number;
+  currentMatches: number;
 };
 
 export type GroupKey =

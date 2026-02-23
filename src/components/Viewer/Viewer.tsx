@@ -26,6 +26,7 @@ export default function Viewer() {
           date={selectedGroup?.date}
           serial={image.serial}
           prompt={selectedGroup?.label}
+          groupId={selectedGroup?.id}
         />
       </div>
       <button

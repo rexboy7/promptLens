@@ -960,6 +960,73 @@ fn submit_comparison(
 }
 
 #[tauri::command]
+fn set_group_rating(app: AppHandle, group_id: String, rating: f64) -> Result<bool, String> {
+    let mut conn = open_db(&app)?;
+    init_db(&conn)?;
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    tx.execute(
+        "INSERT OR IGNORE INTO ratings (group_id, rating, matches) VALUES (?1, 1000.0, 0)",
+        params![group_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    let matches: i64 = tx
+        .query_row(
+            "SELECT matches FROM ratings WHERE group_id = ?1",
+            params![group_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    let next_matches = if matches < 1 { 1 } else { matches };
+
+    tx.execute(
+        "UPDATE ratings SET rating = ?1, matches = ?2 WHERE group_id = ?3",
+        params![rating, next_matches, group_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+#[tauri::command]
+fn get_rating_percentiles(
+    app: AppHandle,
+    percentiles: Vec<f64>,
+) -> Result<Vec<f64>, String> {
+    let conn = open_db(&app)?;
+    init_db(&conn)?;
+
+    let mut stmt = conn
+        .prepare("SELECT rating FROM ratings WHERE matches > 0 ORDER BY rating ASC")
+        .map_err(|e| e.to_string())?;
+    let ratings: Vec<f64> = stmt
+        .query_map([], |row| row.get(0))
+        .map_err(|e| e.to_string())?
+        .filter_map(|item| item.ok())
+        .collect();
+
+    if ratings.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let last_index = (ratings.len() - 1) as f64;
+    let mut results = Vec::with_capacity(percentiles.len());
+    for percentile in percentiles {
+        let clamped = percentile.clamp(0.0, 1.0);
+        let position = clamped * last_index;
+        let lower = position.floor() as usize;
+        let upper = (lower + 1).min(ratings.len() - 1);
+        let weight = position - lower as f64;
+        let value = ratings[lower] * (1.0 - weight) + ratings[upper] * weight;
+        results.push(value);
+    }
+
+    Ok(results)
+}
+
+#[tauri::command]
 fn delete_group(app: AppHandle, group_id: String) -> Result<usize, String> {
     let mut conn = open_db(&app)?;
     init_db(&conn)?;
@@ -1154,7 +1221,9 @@ pub fn run() {
             delete_group,
             extract_prompts,
             get_ratings,
-            submit_comparison
+            submit_comparison,
+            set_group_rating,
+            get_rating_percentiles
         ])
         .setup(|app| {
             let menu = build_menu(app)?;

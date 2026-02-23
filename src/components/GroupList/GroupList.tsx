@@ -44,6 +44,7 @@ export default function GroupList() {
                 • {group.size} images
               </span>
               <span className="group-rating">{ratingText}</span>
+              <span className="group-id">ID: {group.id}</span>
               <span className="group-count" title={group.label}>
                 {displayLabel}
               </span>

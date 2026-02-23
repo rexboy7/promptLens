@@ -1,7 +1,14 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState } from "react";
 import { useGallery } from "../../app/GalleryContext";
-import { getRatings, listGroups, listImages, submitComparison } from "../../data/galleryApi";
+import {
+  getRatings,
+  getRatingPercentiles,
+  listGroups,
+  listImages,
+  setGroupRating,
+  submitComparison,
+} from "../../data/galleryApi";
 import type { Group, ImageItem, RankingPair, RankingSequence } from "../../data/types";
 import ImageMeta from "../ImageMeta";
 import "./RankingPanel.css";
@@ -19,15 +26,20 @@ export default function RankingPanel() {
   const [rankingSequence, setRankingSequence] = useState<RankingSequence | null>(
     null
   );
+  const [ratingPercentileValues, setRatingPercentileValues] = useState<number[]>([]);
   const groupById = useMemo(
     () => new Map(rankingGroups.map((group) => [group.id, group])),
     [rankingGroups]
   );
 
   const getGroupMeta = (groupId?: string) => {
-    if (!groupId) return { date: null, prompt: null };
+    if (!groupId) return { date: null, prompt: null, groupId: null };
     const group = groupById.get(groupId);
-    return { date: group?.date ?? null, prompt: group?.label ?? null };
+    return {
+      date: group?.date ?? null,
+      prompt: group?.label ?? null,
+      groupId: group?.id ?? null,
+    };
   };
 
   async function fetchRankingGroups() {
@@ -51,6 +63,12 @@ export default function RankingPanel() {
       setShowPreviousFull(false);
     }
   }, [rankingActive, rankingMode]);
+
+  useEffect(() => {
+    if (rankingSequence?.currentMatches === 0) {
+      setShowPreviousFull(false);
+    }
+  }, [rankingSequence?.currentMatches]);
 
   useEffect(() => {
     if (!rankingActive) {
@@ -77,21 +95,29 @@ export default function RankingPanel() {
       if (event.defaultPrevented) {
         return;
       }
-      if (event.key === "1") {
-        event.preventDefault();
-        void submitRankingChoice("left");
-      }
-      if (event.key === "2") {
-        event.preventDefault();
-        void submitRankingChoice("right");
-      }
-      if (event.key === "3") {
-        event.preventDefault();
-        void submitRankingChoice("both_good");
-      }
-      if (event.key === "4") {
-        event.preventDefault();
-        void submitRankingChoice("both_bad");
+      if (rankingMode === "sequential" && rankingSequence?.currentMatches === 0) {
+        if (event.key >= "1" && event.key <= "5") {
+          event.preventDefault();
+          void submitInitialRating(Number(event.key));
+          return;
+        }
+      } else {
+        if (event.key === "1") {
+          event.preventDefault();
+          void submitRankingChoice("left");
+        }
+        if (event.key === "2") {
+          event.preventDefault();
+          void submitRankingChoice("right");
+        }
+        if (event.key === "3") {
+          event.preventDefault();
+          void submitRankingChoice("both_good");
+        }
+        if (event.key === "4") {
+          event.preventDefault();
+          void submitRankingChoice("both_bad");
+        }
       }
       if (event.key.toLowerCase() === "w") {
         event.preventDefault();
@@ -105,7 +131,11 @@ export default function RankingPanel() {
           void rerollRankingImages("both");
         }
       }
-      if (event.key.toLowerCase() === "q" && rankingMode === "sequential") {
+      if (
+        event.key.toLowerCase() === "q" &&
+        rankingMode === "sequential" &&
+        rankingSequence?.currentMatches !== 0
+      ) {
         event.preventDefault();
         setShowPreviousFull((prev) => !prev);
       }
@@ -120,6 +150,9 @@ export default function RankingPanel() {
     rerollRankingSequenceImage,
     rerollRankingSequencePreviousImage,
     showPreviousFull,
+    rankingSequence,
+    submitInitialRating,
+    ratingPercentileValues,
   ]);
 
   const pickTwo = (items: ImageItem[]) => {
@@ -166,6 +199,13 @@ export default function RankingPanel() {
     const tier =
       roll < 0.6 ? low : roll < 0.85 ? mid : high.length > 0 ? high : mid;
     return pickWeighted(tier.length > 0 ? tier : sorted, weightFn);
+  };
+
+  const ratingPercentiles = [0.1, 0.3, 0.5, 0.7, 0.9];
+  const ratingFallback = (score: number) => 1000 + (score - 3) * 40;
+  const ratingAtIndex = (values: number[], index: number) => {
+    if (values.length === 0) return 1000;
+    return values[Math.min(values.length - 1, Math.max(0, index))];
   };
 
   async function buildRankingPair(groups: Group[]) {
@@ -230,6 +270,8 @@ export default function RankingPanel() {
       rating: ratingsById.get(group.id)?.rating ?? 1000,
       matches: ratingsById.get(group.id)?.matches ?? 0,
     }));
+    const percentiles = await getRatingPercentiles(ratingPercentiles);
+    setRatingPercentileValues(percentiles);
     const previousMeta = previousId
       ? withMeta.find((item) => item.group.id === previousId)
       : pickTiered(withMeta, (item) => 1 / (1 + item.matches));
@@ -254,6 +296,8 @@ export default function RankingPanel() {
     const previousImage = pickOne(previousImages);
     const currentImage = pickOne(currentImages);
     const currentRating = ratingsById.get(currentMeta.group.id)?.rating ?? 1000;
+    const currentMatches = ratingsById.get(currentMeta.group.id)?.matches ?? 0;
+    const previousMatches = ratingsById.get(previousMeta.group.id)?.matches ?? 0;
     setRankingSequence({
       previousId: previousMeta.group.id,
       currentId: currentMeta.group.id,
@@ -261,6 +305,8 @@ export default function RankingPanel() {
       currentImage,
       previousRating,
       currentRating,
+      previousMatches,
+      currentMatches,
     });
   }
 
@@ -342,6 +388,17 @@ export default function RankingPanel() {
     await buildRankingSequence(rankingGroups, rankingSequence.currentId);
   }
 
+  async function submitInitialRating(score: number) {
+    if (!rankingSequence) return;
+    const index = Math.max(1, Math.min(5, score)) - 1;
+    const rating =
+      ratingPercentileValues.length === ratingPercentiles.length
+        ? ratingAtIndex(ratingPercentileValues, index)
+        : ratingFallback(score);
+    await setGroupRating({ groupId: rankingSequence.currentId, rating });
+    await buildRankingSequence(rankingGroups, rankingSequence.currentId);
+  }
+
   if (!rankingActive) {
     return (
       <section className="ranking-panel">
@@ -381,19 +438,22 @@ export default function RankingPanel() {
         </div>
       );
     }
+    const isCurrentFresh = rankingSequence.currentMatches === 0;
     return (
       <div className="ranking-overlay ranking-overlay--sequential">
         <section className="ranking-panel ranking-panel--overlay ranking-panel--sequential">
-          <div className="ranking-seq-previous">
-            <img
-              src={convertFileSrc(rankingSequence.previousImage.path)}
-              alt="Previous"
-              onClick={() => setShowPreviousFull(true)}
-            />
-            <div className="rating-chip">
-              {rankingSequence.previousRating.toFixed(1)}
+          {!isCurrentFresh && (
+            <div className="ranking-seq-previous">
+              <img
+                src={convertFileSrc(rankingSequence.previousImage.path)}
+                alt="Previous"
+                onClick={() => setShowPreviousFull(true)}
+              />
+              <div className="rating-chip">
+                {rankingSequence.previousRating.toFixed(1)}
+              </div>
             </div>
-          </div>
+          )}
           <div className="ranking-seq-current">
             <div className="ranking-seq-image">
               <img
@@ -408,37 +468,65 @@ export default function RankingPanel() {
             </div>
           </div>
           <div className="ranking-controls ranking-controls--sequential">
-            <button type="button" onClick={() => submitRankingChoice("left")}>
-              Choose Previous (1)
-            </button>
-            <button type="button" onClick={() => submitRankingChoice("right")}>
-              Choose Current (2)
-            </button>
-            <button
-              type="button"
-              onClick={() => submitRankingChoice("both_good")}
-            >
-              Both Good (3)
-            </button>
-            <button
-              type="button"
-              onClick={() => submitRankingChoice("both_bad")}
-            >
-              Both Bad (4)
-            </button>
-            <button type="button" onClick={rerollRankingSequenceImage}>
-              Swap Current (W)
-            </button>
-            <button type="button" onClick={stopRanking}>
-              Stop Ranking
-            </button>
+            {isCurrentFresh ? (
+              <>
+                <button type="button" onClick={() => submitInitialRating(1)}>
+                  Rate 1 (1)
+                </button>
+                <button type="button" onClick={() => submitInitialRating(2)}>
+                  Rate 2 (2)
+                </button>
+                <button type="button" onClick={() => submitInitialRating(3)}>
+                  Rate 3 (3)
+                </button>
+                <button type="button" onClick={() => submitInitialRating(4)}>
+                  Rate 4 (4)
+                </button>
+                <button type="button" onClick={() => submitInitialRating(5)}>
+                  Rate 5 (5)
+                </button>
+                <button type="button" onClick={rerollRankingSequenceImage}>
+                  Swap Current (W)
+                </button>
+                <button type="button" onClick={stopRanking}>
+                  Stop Ranking
+                </button>
+              </>
+            ) : (
+              <>
+                <button type="button" onClick={() => submitRankingChoice("left")}>
+                  Choose Previous (1)
+                </button>
+                <button type="button" onClick={() => submitRankingChoice("right")}>
+                  Choose Current (2)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => submitRankingChoice("both_good")}
+                >
+                  Both Good (3)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => submitRankingChoice("both_bad")}
+                >
+                  Both Bad (4)
+                </button>
+                <button type="button" onClick={rerollRankingSequenceImage}>
+                  Swap Current (W)
+                </button>
+                <button type="button" onClick={stopRanking}>
+                  Stop Ranking
+                </button>
+              </>
+            )}
           </div>
           <div className="ranking-current-statusbar">
             <div className="rating-chip">
               {rankingSequence.currentRating.toFixed(1)}
             </div>
           </div>
-          {showPreviousFull && (
+          {showPreviousFull && !isCurrentFresh && (
             <div
               className="ranking-seq-preview"
               onClick={() => setShowPreviousFull(false)}

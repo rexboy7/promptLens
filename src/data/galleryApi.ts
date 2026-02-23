@@ -51,3 +51,16 @@ export async function submitComparison(params: {
 }): Promise<boolean> {
   return invoke<boolean>("submit_comparison", params);
 }
+
+export async function setGroupRating(params: {
+  groupId: string;
+  rating: number;
+}): Promise<boolean> {
+  return invoke<boolean>("set_group_rating", params);
+}
+
+export async function getRatingPercentiles(
+  percentiles: number[]
+): Promise<number[]> {
+  return invoke<number[]>("get_rating_percentiles", { percentiles });
+}

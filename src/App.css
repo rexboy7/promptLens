@@ -181,6 +181,11 @@ button:hover {
   font-size: 0.8rem;
 }
 
+.group-id {
+  color: #8b7b6f;
+  font-size: 0.75rem;
+}
+
 .group-subtle {
   color: #8b7b6f;
   font-size: 0.8rem;
@@ -244,6 +249,11 @@ button:hover {
   display: inline-block;
   max-width: 100%;
   word-break: break-word;
+}
+
+.image-meta__group {
+  color: inherit;
+  opacity: 0.8;
 }
 
 .image-meta--viewer {
