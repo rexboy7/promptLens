@@ -102,19 +102,23 @@ export function useGalleryController() {
     if (selectedGroupId) {
       const node = groupRefs.current[selectedGroupId];
       if (node) {
-        node.scrollIntoView({ block: "center" });
+        requestAnimationFrame(() => {
+          node.scrollIntoView({ block: "center" });
+        });
       }
     }
-  }, [selectedGroupId]);
+  }, [selectedGroupId, groups]);
 
   useEffect(() => {
     if (selectedImageIndex !== null) {
       const node = imageRefs.current[selectedImageIndex];
       if (node) {
-        node.scrollIntoView({ block: "center", inline: "center" });
+        requestAnimationFrame(() => {
+          node.scrollIntoView({ block: "center", inline: "center" });
+        });
       }
     }
-  }, [selectedImageIndex, images.length]);
+  }, [selectedImageIndex, images]);
 
   const goPrevGroup = () => {
     const currentIndex = groups.findIndex(
