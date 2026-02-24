@@ -185,8 +185,6 @@ export function useGalleryController() {
     const storedMode = localStorage.getItem("promptlens.groupMode");
     if (
       storedMode === "prompt" ||
-      storedMode === "prompt_date" ||
-      storedMode === "date_prompt" ||
       storedMode === "date" ||
       storedMode === "score"
     ) {

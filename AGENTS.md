@@ -52,8 +52,6 @@ Note: Tauri requires Rust toolchain set up. If you see Rust errors, rebuild.
 ### 1) Image grouping
 Images can be grouped by:
 - Prompt only (`prompt`)
-- Prompt + Date (`prompt_date`)
-- Date + Prompt (`date_prompt`)
 - Date only (`date`)
 - Score (`score`, sorted by rating)
 - Batch (fallback when no prompt)
@@ -73,7 +71,7 @@ Images can be grouped by:
 - Two modes:
   - Pair: two groups, two images each (4 total).
   - Sequential: current full-screen + previous preview.
-- Ratings are stored only for prompt groups (`p:`). Prompt-date groups (`pd:`) read from prompt ratings.
+- Ratings are stored only for prompt groups (`p:`).
 - Batch (`b:`) and date (`d:`) groups are excluded from ratings.
 
 ---
@@ -185,7 +183,6 @@ Group id encoding:
 - Prompt: `p:<id>`
 - Batch: `b:<id>`
 - Date: `d:<YYYY-MM-DD>`
-- Prompt+Date or Date+Prompt: `pd:<prompt_id>:<date>`
 
 Notes:
 - Ratings use group IDs, so they are stable across runs.
@@ -310,8 +307,6 @@ Ranking:
 ## Group Modes
 
 - `prompt`: groups by prompt
-- `prompt_date`: prompt + date grouping
-- `date_prompt`: date + prompt grouping
 - `date`: date-only grouping
 - `score`: prompt grouping sorted by rating
 

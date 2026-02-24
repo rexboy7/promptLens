@@ -590,47 +590,7 @@ fn list_groups(
         return Ok(groups);
     }
 
-    let (prompt_query, order_clause) = if mode == "date_prompt" {
-        (
-            r#"
-            SELECT
-                'date_prompt' AS group_type,
-                p.id AS group_id,
-                p.text AS label,
-                i.date AS date,
-                COUNT(i.id) AS size,
-                MIN(i.path) AS representative_path,
-                NULL AS score
-            FROM prompts p
-            JOIN images i ON i.prompt_id = p.id
-            WHERE (?1 IS NULL OR i.date = ?1)
-              {fts_where}
-            GROUP BY i.date, p.id
-            "#
-            .replace("{fts_where}", fts_filter),
-            "ORDER BY date DESC, label DESC".to_string(),
-        )
-    } else if mode == "prompt_date" {
-        (
-            r#"
-            SELECT
-                'prompt_date' AS group_type,
-                p.id AS group_id,
-                p.text AS label,
-                i.date AS date,
-                COUNT(i.id) AS size,
-                MIN(i.path) AS representative_path,
-                NULL AS score
-            FROM prompts p
-            JOIN images i ON i.prompt_id = p.id
-            WHERE (?1 IS NULL OR i.date = ?1)
-              {fts_where}
-            GROUP BY p.id, i.date
-            "#
-            .replace("{fts_where}", fts_filter),
-            "ORDER BY group_type ASC, label DESC".to_string(),
-        )
-    } else if mode == "score" {
+    let (prompt_query, order_clause) = if mode == "score" {
         (
             r#"
             SELECT
@@ -736,15 +696,11 @@ fn list_groups(
             let label: String = row.get(2)?;
             let date: Option<String> = row.get(3)?;
             Ok(GroupItem {
-                id: if group_type == "prompt_date" || group_type == "date_prompt" {
-                    format!("pd:{}:{}", group_id, date.clone().unwrap_or_default())
-                } else {
-                    format!(
-                        "{}:{}",
-                        if group_type == "prompt" { "p" } else { "b" },
-                        group_id
-                    )
-                },
+                id: format!(
+                    "{}:{}",
+                    if group_type == "prompt" { "p" } else { "b" },
+                    group_id
+                ),
                 label,
                 group_type,
                 date,
@@ -772,15 +728,6 @@ fn list_images(app: AppHandle, group_id: String) -> Result<Vec<ImageItem>, Strin
         ("WHERE prompt_id = ?1", vec![raw_id.to_string()])
     } else if group_type == "b" {
         ("WHERE batch_id = ?1", vec![raw_id.to_string()])
-    } else if group_type == "pd" {
-        let parts: Vec<&str> = group_id.splitn(3, ':').collect();
-        if parts.len() != 3 {
-            return Err("Invalid prompt-date group id".to_string());
-        }
-        (
-            "WHERE prompt_id = ?1 AND date = ?2",
-            vec![parts[1].to_string(), parts[2].to_string()],
-        )
     } else if group_type == "d" {
         ("WHERE date = ?1", vec![raw_id.to_string()])
     } else {
@@ -892,14 +839,7 @@ fn get_ratings(app: AppHandle, group_ids: Vec<String>) -> Result<Vec<RatingItem>
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     let mut lookup_ids: Vec<Option<String>> = Vec::with_capacity(group_ids.len());
     for id in &group_ids {
-        let lookup = if id.starts_with("pd:") {
-            let parts: Vec<&str> = id.splitn(3, ':').collect();
-            if parts.len() == 3 {
-                format!("p:{}", parts[1])
-            } else {
-                id.clone()
-            }
-        } else if id.starts_with("b:") || id.starts_with("d:") {
+        let lookup = if id.starts_with("b:") || id.starts_with("d:") {
             lookup_ids.push(None);
             continue;
         } else {

@@ -40,26 +40,6 @@ export default function Filters() {
         </button>
         <button
           type="button"
-          className={groupMode === "prompt_date" ? "mode active" : "mode"}
-          onClick={() => {
-            setGroupMode("prompt_date");
-            void refreshGroups("prompt_date");
-          }}
-        >
-          Prompt + Date
-        </button>
-        <button
-          type="button"
-          className={groupMode === "date_prompt" ? "mode active" : "mode"}
-          onClick={() => {
-            setGroupMode("date_prompt");
-            void refreshGroups("date_prompt");
-          }}
-        >
-          Date + Prompt
-        </button>
-        <button
-          type="button"
           className={groupMode === "date" ? "mode active" : "mode"}
           onClick={() => {
             setGroupMode("date");

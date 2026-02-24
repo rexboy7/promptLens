@@ -1,7 +1,5 @@
 export type GroupMode =
   | "prompt"
-  | "prompt_date"
-  | "date_prompt"
   | "date"
   | "score";
 
@@ -61,5 +59,4 @@ export type RankingSequence = {
 export type GroupKey =
   | { type: "prompt"; id: number }
   | { type: "batch"; id: number }
-  | { type: "date"; date: string }
-  | { type: "prompt_date"; id: number; date: string };
+  | { type: "date"; date: string };

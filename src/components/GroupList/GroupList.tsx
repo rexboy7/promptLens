@@ -34,10 +34,6 @@ export default function GroupList() {
               <span className="group-date">
                 {group.group_type === "prompt"
                   ? "Prompt"
-                  : group.group_type === "prompt_date"
-                  ? "Prompt + Date"
-                  : group.group_type === "date_prompt"
-                  ? "Date + Prompt"
                   : group.group_type === "date"
                   ? "Date"
                 : "Batch"}{" "}
