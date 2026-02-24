@@ -40,6 +40,11 @@ export function useGalleryController() {
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const slideshowRef = useRef<number | null>(null);
   const suppressGroupFetchRef = useRef(false);
+  const resumeImageIndexRef = useRef<number | null>(null);
+  const pendingSelectionRef = useRef<{
+    groupId: string | null;
+    imageIndex: number | null;
+  }>({ groupId: null, imageIndex: null });
   const groupRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const imageRefs = useRef<Record<number, HTMLButtonElement | null>>({});
 
@@ -55,7 +60,19 @@ export function useGalleryController() {
     void (async () => {
       const result = await listImages(selectedGroupId);
       setImages(result);
-      setSelectedImageIndex(result.length > 0 ? 0 : null);
+      if (resumeImageIndexRef.current !== null) {
+        const clampedIndex =
+          result.length > 0
+            ? Math.min(
+                result.length - 1,
+                Math.max(0, resumeImageIndexRef.current)
+              )
+            : null;
+        setSelectedImageIndex(clampedIndex);
+        resumeImageIndexRef.current = null;
+      } else {
+        setSelectedImageIndex(result.length > 0 ? 0 : null);
+      }
     })();
   }, [selectedGroupId]);
 
@@ -190,11 +207,59 @@ export function useGalleryController() {
     ) {
       setGroupMode(storedMode);
     }
+    const storedSearch = localStorage.getItem("promptlens.searchText");
+    if (storedSearch !== null) {
+      setSearchText(storedSearch);
+    }
+    const storedDateFilter = localStorage.getItem("promptlens.dateFilter");
+    if (storedDateFilter !== null) {
+      setDateFilter(storedDateFilter);
+    }
+    const storedGroupId = localStorage.getItem("promptlens.selectedGroupId");
+    const storedImageIndex = localStorage.getItem(
+      "promptlens.selectedImageIndex"
+    );
+    const parsedImageIndex =
+      storedImageIndex !== null ? Number(storedImageIndex) : null;
+    pendingSelectionRef.current = {
+      groupId: storedGroupId,
+      imageIndex:
+        parsedImageIndex !== null && Number.isFinite(parsedImageIndex)
+          ? parsedImageIndex
+          : null,
+    };
   }, []);
 
   useEffect(() => {
     localStorage.setItem("promptlens.groupMode", groupMode);
   }, [groupMode]);
+
+  useEffect(() => {
+    localStorage.setItem("promptlens.searchText", searchText);
+  }, [searchText]);
+
+  useEffect(() => {
+    localStorage.setItem("promptlens.dateFilter", dateFilter);
+  }, [dateFilter]);
+
+  useEffect(() => {
+    if (selectedGroupId) {
+      localStorage.setItem("promptlens.selectedGroupId", selectedGroupId);
+    } else {
+      localStorage.removeItem("promptlens.selectedGroupId");
+    }
+  }, [selectedGroupId]);
+
+  useEffect(() => {
+    if (selectedImageIndex !== null) {
+      localStorage.setItem(
+        "promptlens.selectedImageIndex",
+        String(selectedImageIndex)
+      );
+    } else {
+      localStorage.removeItem("promptlens.selectedImageIndex");
+    }
+  }, [selectedImageIndex]);
 
   useEffect(() => {
     if (groupMode === "score") {
@@ -226,17 +291,27 @@ export function useGalleryController() {
 
   async function refreshGroups(nextMode: GroupMode = groupMode) {
     try {
+      const desiredGroupId =
+        pendingSelectionRef.current.groupId ?? selectedGroupId;
+      const desiredImageIndex =
+        pendingSelectionRef.current.imageIndex ?? selectedImageIndex;
       const result = await listGroups({
         dateFilter: dateFilter.trim() ? dateFilter.trim() : null,
         searchText: searchText.trim() ? searchText.trim() : null,
         groupMode: nextMode,
       });
       setGroups(result);
-      if (result.length > 0) {
-        setSelectedGroupId(result[0].id);
-      } else {
-        setSelectedGroupId(null);
+      const nextGroup =
+        desiredGroupId && result.some((group) => group.id === desiredGroupId)
+          ? desiredGroupId
+          : result.length > 0
+          ? result[0].id
+          : null;
+      if (nextGroup === desiredGroupId && desiredImageIndex !== null) {
+        resumeImageIndexRef.current = desiredImageIndex;
       }
+      setSelectedGroupId(nextGroup);
+      pendingSelectionRef.current = { groupId: null, imageIndex: null };
     } catch (error) {
       setStatus(`Group refresh failed: ${String(error)}`);
     }
