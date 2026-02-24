@@ -3,6 +3,13 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useKeyboard } from "../hooks/useKeyboard";
 import { useMenuEvents } from "../hooks/useMenuEvents";
+import {
+  useLocalStorageEnum,
+  useLocalStorageJson,
+  useLocalStorageOptionalNumber,
+  useLocalStorageOptionalString,
+  useLocalStorageString,
+} from "../hooks/useLocalStorage";
 import type { Command } from "./commands";
 import {
   deleteGroup,
@@ -17,16 +24,31 @@ import type { Group, GroupMode, ImageItem, RatingItem, RankingMode } from "../da
 
 export function useGalleryController() {
   const [rootPath, setRootPath] = useState("");
-  const [dateFilter, setDateFilter] = useState("");
-  const [searchText, setSearchText] = useState("");
-  const [groupMode, setGroupMode] = useState<GroupMode>("prompt");
+  const [dateFilter, setDateFilter] = useLocalStorageString(
+    "promptlens.dateFilter",
+    ""
+  );
+  const [searchText, setSearchText] = useLocalStorageString(
+    "promptlens.searchText",
+    ""
+  );
+  const [groupMode, setGroupMode] = useLocalStorageEnum<GroupMode>(
+    "promptlens.groupMode",
+    ["prompt", "date", "score"],
+    "prompt"
+  );
   const [groups, setGroups] = useState<Group[]>([]);
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [selectedGroupId, setSelectedGroupId] =
+    useLocalStorageOptionalString("promptlens.selectedGroupId");
   const [images, setImages] = useState<ImageItem[]>([]);
-  const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
+  const [selectedImageIndex, setSelectedImageIndex] =
+    useLocalStorageOptionalNumber("promptlens.selectedImageIndex");
   const [viewerOpen, setViewerOpen] = useState(false);
   const [status, setStatus] = useState("");
-  const [recentRoots, setRecentRoots] = useState<string[]>([]);
+  const [recentRoots, setRecentRoots] = useLocalStorageJson<string[]>(
+    "promptlens.recentRoots",
+    []
+  );
   const [autoScanned, setAutoScanned] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isSlideshowRunning, setIsSlideshowRunning] = useState(false);
@@ -184,82 +206,17 @@ export function useGalleryController() {
   useMenuEvents({ dispatch });
 
   useEffect(() => {
-    const stored = localStorage.getItem("promptlens.recentRoots");
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
-          const roots = parsed.filter((item) => typeof item === "string");
-          setRecentRoots(roots);
-          if (roots.length > 0) {
-            setRootPath(roots[0]);
-          }
-        }
-      } catch {
-        setRecentRoots([]);
-      }
-    }
-    const storedMode = localStorage.getItem("promptlens.groupMode");
-    if (
-      storedMode === "prompt" ||
-      storedMode === "date" ||
-      storedMode === "score"
-    ) {
-      setGroupMode(storedMode);
-    }
-    const storedSearch = localStorage.getItem("promptlens.searchText");
-    if (storedSearch !== null) {
-      setSearchText(storedSearch);
-    }
-    const storedDateFilter = localStorage.getItem("promptlens.dateFilter");
-    if (storedDateFilter !== null) {
-      setDateFilter(storedDateFilter);
-    }
-    const storedGroupId = localStorage.getItem("promptlens.selectedGroupId");
-    const storedImageIndex = localStorage.getItem(
-      "promptlens.selectedImageIndex"
-    );
-    const parsedImageIndex =
-      storedImageIndex !== null ? Number(storedImageIndex) : null;
     pendingSelectionRef.current = {
-      groupId: storedGroupId,
-      imageIndex:
-        parsedImageIndex !== null && Number.isFinite(parsedImageIndex)
-          ? parsedImageIndex
-          : null,
+      groupId: selectedGroupId,
+      imageIndex: selectedImageIndex,
     };
   }, []);
 
   useEffect(() => {
-    localStorage.setItem("promptlens.groupMode", groupMode);
-  }, [groupMode]);
-
-  useEffect(() => {
-    localStorage.setItem("promptlens.searchText", searchText);
-  }, [searchText]);
-
-  useEffect(() => {
-    localStorage.setItem("promptlens.dateFilter", dateFilter);
-  }, [dateFilter]);
-
-  useEffect(() => {
-    if (selectedGroupId) {
-      localStorage.setItem("promptlens.selectedGroupId", selectedGroupId);
-    } else {
-      localStorage.removeItem("promptlens.selectedGroupId");
+    if (recentRoots.length > 0) {
+      setRootPath(recentRoots[0]);
     }
-  }, [selectedGroupId]);
-
-  useEffect(() => {
-    if (selectedImageIndex !== null) {
-      localStorage.setItem(
-        "promptlens.selectedImageIndex",
-        String(selectedImageIndex)
-      );
-    } else {
-      localStorage.removeItem("promptlens.selectedImageIndex");
-    }
-  }, [selectedImageIndex]);
+  }, []);
 
   useEffect(() => {
     if (groupMode === "score") {
@@ -286,7 +243,6 @@ export function useGalleryController() {
   function updateRecentRoots(path: string) {
     const next = [path, ...recentRoots.filter((item) => item !== path)].slice(0, 8);
     setRecentRoots(next);
-    localStorage.setItem("promptlens.recentRoots", JSON.stringify(next));
   }
 
   async function refreshGroups(nextMode: GroupMode = groupMode) {
