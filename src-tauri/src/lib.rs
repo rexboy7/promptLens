@@ -481,57 +481,102 @@ fn list_groups(
         }
     });
 
+    let use_fts = search_fts.is_some();
+    let fts_filter = if use_fts {
+        "AND p.id IN (SELECT rowid FROM prompts_fts WHERE prompts_fts MATCH ?2)"
+    } else {
+        ""
+    };
+
     if mode == "date" {
+        let prompt_query = r#"
+            SELECT
+                'prompt' AS group_type,
+                p.id AS group_id,
+                p.text AS label,
+                MAX(i.date) AS date,
+                COUNT(i.id) AS size,
+                MIN(i.path) AS representative_path,
+                MAX(i.mtime) AS sort_mtime
+            FROM prompts p
+            JOIN images i ON i.prompt_id = p.id
+            WHERE (?1 IS NULL OR i.date = ?1)
+              {fts_where}
+            GROUP BY p.id
+            "#
+        .replace("{fts_where}", fts_filter);
+
+        let date_like_param = if use_fts { "?3" } else { "?2" };
+        let batch_search_clause = if search.is_some() {
+            format!("AND LOWER(b.date) LIKE {}", date_like_param)
+        } else {
+            String::new()
+        };
+
+        let mut stmt = conn
+            .prepare(
+                &format!(
+                    r#"
+                SELECT group_type, group_id, label, date, size, representative_path
+                FROM (
+                    {}
+
+                    UNION ALL
+
+                    SELECT
+                        'batch' AS group_type,
+                        b.id AS group_id,
+                        b.date AS label,
+                        MAX(i.date) AS date,
+                        COUNT(i.id) AS size,
+                        b.representative_path AS representative_path,
+                        MAX(i.mtime) AS sort_mtime
+                    FROM batches b
+                    JOIN images i ON i.batch_id = b.id
+                    WHERE i.prompt_id IS NULL
+                      AND (?1 IS NULL OR i.date = ?1)
+                      {batch_search}
+                    GROUP BY b.id, b.date
+                )
+                ORDER BY date DESC, sort_mtime DESC, label DESC
+                "#,
+                    prompt_query,
+                    batch_search = batch_search_clause
+                ),
+            )
+            .map_err(|e| e.to_string())?;
+
         let date_value = date_filter
             .as_ref()
             .map(|value| Value::from(value.clone()))
             .unwrap_or(Value::Null);
-        let (query, params_vec) = if search.is_some() {
-            (
-                r#"
-                SELECT
-                    'date' AS group_type,
-                    i.date AS group_id,
-                    i.date AS label,
-                    i.date AS date,
-                    COUNT(i.id) AS size,
-                    MIN(i.path) AS representative_path
-                FROM images i
-                WHERE (?1 IS NULL OR i.date = ?1)
-                  AND LOWER(i.date) LIKE ?2
-                GROUP BY i.date
-                ORDER BY i.date DESC
-                "#,
-                vec![date_value, Value::from(search_like.clone())],
-            )
+        let params_vec = if search.is_none() {
+            vec![date_value.clone()]
+        } else if use_fts {
+            vec![
+                date_value.clone(),
+                Value::from(search_fts.clone().unwrap_or_default()),
+                Value::from(search_like.clone()),
+            ]
         } else {
-            (
-                r#"
-                SELECT
-                    'date' AS group_type,
-                    i.date AS group_id,
-                    i.date AS label,
-                    i.date AS date,
-                    COUNT(i.id) AS size,
-                    MIN(i.path) AS representative_path
-                FROM images i
-                WHERE (?1 IS NULL OR i.date = ?1)
-                GROUP BY i.date
-                ORDER BY i.date DESC
-                "#,
-                vec![date_value],
-            )
+            vec![date_value.clone(), Value::from(search_like.clone())]
         };
 
-        let mut stmt = conn.prepare(query).map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map(rusqlite::params_from_iter(params_vec), |row| {
+                let group_type: String = row.get(0)?;
+                let group_id: i64 = row.get(1)?;
                 let label: String = row.get(2)?;
+                let date: Option<String> = row.get(3)?;
                 Ok(GroupItem {
-                    id: format!("d:{}", label),
+                    id: format!(
+                        "{}:{}",
+                        if group_type == "prompt" { "p" } else { "b" },
+                        group_id
+                    ),
                     label,
-                    group_type: row.get(0)?,
-                    date: row.get(3)?,
+                    group_type,
+                    date,
                     size: row.get(4)?,
                     representative_path: row.get(5)?,
                 })
@@ -544,13 +589,6 @@ fn list_groups(
         }
         return Ok(groups);
     }
-
-    let use_fts = search_fts.is_some();
-    let fts_filter = if use_fts {
-        "AND p.id IN (SELECT rowid FROM prompts_fts WHERE prompts_fts MATCH ?2)"
-    } else {
-        ""
-    };
 
     let (prompt_query, order_clause) = if mode == "date_prompt" {
         (
