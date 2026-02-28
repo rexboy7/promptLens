@@ -9,6 +9,7 @@ export default function GroupList() {
     truncateLabel,
     setSelectedGroupId,
     ratingByGroupId,
+    viewedGroupIds,
   } = useGallery();
   return (
     <aside className="group-list">
@@ -19,11 +20,18 @@ export default function GroupList() {
         const ratingText = rating
           ? `${Math.round(rating.rating)} • ${rating.matches} matches`
           : "Score —";
+        const isViewed = viewedGroupIds.includes(group.id);
         return (
           <button
             key={group.id}
             type="button"
-            className={group.id === selectedGroupId ? "group active" : "group"}
+            className={[
+              "group",
+              group.id === selectedGroupId ? "active" : "",
+              isViewed ? "viewed" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
             ref={(node) => {
               groupRefs.current[group.id] = node;
             }}

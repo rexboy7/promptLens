@@ -157,6 +157,11 @@ button:hover {
   box-shadow: 0 8px 16px rgba(47, 42, 38, 0.15);
 }
 
+.group.viewed {
+  opacity: 0.6;
+  filter: saturate(0.6);
+}
+
 .group-meta {
   display: flex;
   flex-direction: column;

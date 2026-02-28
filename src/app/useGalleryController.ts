@@ -59,6 +59,10 @@ export function useGalleryController() {
     Record<string, RatingItem>
   >({});
   const [ratingsVersion, setRatingsVersion] = useState(0);
+  const [viewedGroupIds, setViewedGroupIds] = useLocalStorageJson<string[]>(
+    "promptlens.viewedGroupIds",
+    []
+  );
 
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const slideshowRef = useRef<number | null>(null);
@@ -72,6 +76,8 @@ export function useGalleryController() {
   const imageRefs = useRef<Record<number, HTMLButtonElement | null>>({});
   const imageBagRef = useRef<ShuffleBag<ImageItem> | null>(null);
   const imageBagGroupRef = useRef<string | null>(null);
+  const viewedGroupRef = useRef<string | null>(null);
+  const viewedIndexSetRef = useRef<Set<number>>(new Set());
 
   const getNextImageIndex = (groupId: string | null, items: ImageItem[]) => {
     if (!groupId || items.length === 0) return null;
@@ -114,6 +120,31 @@ export function useGalleryController() {
       }
     })();
   }, [selectedGroupId]);
+
+  useEffect(() => {
+    if (viewedGroupRef.current && viewedGroupRef.current !== selectedGroupId) {
+      const viewedCount = viewedIndexSetRef.current.size;
+      const totalCount =
+        groups.find((group) => group.id === viewedGroupRef.current)?.size ?? 0;
+      if (totalCount > 0 && viewedCount / totalCount > 0.6) {
+        setViewedGroupIds((prev) => {
+          const next = prev.filter((id) => id !== viewedGroupRef.current);
+          next.unshift(viewedGroupRef.current as string);
+          return next.slice(0, 50);
+        });
+      }
+    }
+    if (selectedGroupId !== viewedGroupRef.current) {
+      viewedGroupRef.current = selectedGroupId;
+      viewedIndexSetRef.current = new Set();
+    }
+  }, [groups, selectedGroupId, setViewedGroupIds]);
+
+  useEffect(() => {
+    if (selectedImageIndex === null) return;
+    if (!selectedGroupId || viewedGroupRef.current !== selectedGroupId) return;
+    viewedIndexSetRef.current.add(selectedImageIndex);
+  }, [selectedGroupId, selectedImageIndex]);
 
   useEffect(() => {
     if (selectedGroupId) {
@@ -496,6 +527,7 @@ export function useGalleryController() {
     rankingMode,
     ratingByGroupId,
     ratingsVersion,
+    viewedGroupIds,
     startRanking,
     stopRanking,
     goPrevGroup,
