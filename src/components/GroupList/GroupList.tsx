@@ -39,14 +39,6 @@ export default function GroupList() {
           >
             <img src={thumbSrc} alt={`Group ${group.id}`} />
             <div className="group-meta">
-              <span className="group-date">
-                {group.group_type === "prompt"
-                  ? "Prompt"
-                  : group.group_type === "date"
-                  ? "Date"
-                : "Batch"}{" "}
-                • {group.size} images
-              </span>
               <span className="group-rating">{ratingText}</span>
               <span className="group-id">ID: {group.id}</span>
               <span className="group-count" title={group.label}>

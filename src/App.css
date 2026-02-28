@@ -142,6 +142,7 @@ button:hover {
   background: #f5f0e8;
   border: 1px solid #e0d6c8;
   text-align: left;
+  position: relative;
   transition: border-color 0.2s ease, transform 0.2s ease;
 }
 
@@ -164,8 +165,9 @@ button:hover {
 }
 
 .group-viewed-badge {
-  margin-left: auto;
-  align-self: flex-start;
+  position: absolute;
+  top: 8px;
+  right: 8px;
   padding: 4px 8px;
   border-radius: 999px;
   font-size: 0.7rem;
@@ -181,10 +183,6 @@ button:hover {
   display: flex;
   flex-direction: column;
   gap: 4px;
-}
-
-.group-date {
-  font-weight: 600;
 }
 
 .group-count {
