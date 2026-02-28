@@ -160,6 +160,21 @@ button:hover {
 .group.viewed {
   opacity: 0.6;
   filter: saturate(0.6);
+  background: #ebe6df;
+}
+
+.group-viewed-badge {
+  margin-left: auto;
+  align-self: flex-start;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #6f665f;
+  background: #f1ebe4;
+  border: 1px solid #ded5c9;
 }
 
 .group-meta {

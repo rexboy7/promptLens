@@ -54,6 +54,7 @@ export default function GroupList() {
               </span>
               {group.date && <span className="group-subtle">{group.date}</span>}
             </div>
+            {isViewed && <span className="group-viewed-badge">Viewed</span>}
           </button>
         );
       })}
