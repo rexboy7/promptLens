@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { MouseEvent as ReactMouseEvent } from "react";
 
 type MenuState<Id> = {
   id: Id;
@@ -37,7 +38,7 @@ export function useContextMenu<Id>(options: Options = {}) {
     };
   }, [menu]);
 
-  const openMenu = (event: MouseEvent, id: Id) => {
+  const openMenu = (event: ReactMouseEvent, id: Id) => {
     event.preventDefault();
     const width = options.width ?? 180;
     const height = options.height ?? 164;
