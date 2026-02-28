@@ -19,6 +19,7 @@ import {
   listGroups,
   listImages,
   scanDirectory as scanDirectoryApi,
+  setGroupRating,
 } from "../data/galleryApi";
 import type { Group, GroupMode, ImageItem, RatingItem, RankingMode } from "../data/types";
 import { ShuffleBag } from "../utils/shuffleBag";
@@ -79,6 +80,26 @@ export function useGalleryController() {
   const viewedGroupRef = useRef<string | null>(null);
   const viewedIndexSetRef = useRef<Set<number>>(new Set());
 
+  const markGroupViewed = (groupId: string) => {
+    setViewedGroupIds((prev) => {
+      if (prev[0] === groupId) return prev;
+      const next = prev.filter((id) => id !== groupId);
+      next.unshift(groupId);
+      return next.slice(0, 50);
+    });
+  };
+
+  const markGroupUnviewed = (groupId: string) => {
+    setViewedGroupIds((prev) => prev.filter((id) => id !== groupId));
+  };
+
+  const adjustGroupRating = async (groupId: string, delta: number) => {
+    const current = ratingByGroupId[groupId]?.rating ?? 1000;
+    const next = Math.round(current + delta);
+    await setGroupRating({ groupId, rating: next });
+    await loadRatings(true);
+  };
+
   const getNextImageIndex = (groupId: string | null, items: ImageItem[]) => {
     if (!groupId || items.length === 0) return null;
     if (!imageBagRef.current || imageBagGroupRef.current !== groupId) {
@@ -120,15 +141,6 @@ export function useGalleryController() {
       }
     })();
   }, [selectedGroupId]);
-
-  const markGroupViewed = (groupId: string) => {
-    setViewedGroupIds((prev) => {
-      if (prev[0] === groupId) return prev;
-      const next = prev.filter((id) => id !== groupId);
-      next.unshift(groupId);
-      return next.slice(0, 50);
-    });
-  };
 
   useEffect(() => {
     if (selectedGroupId !== viewedGroupRef.current) {
@@ -529,6 +541,9 @@ export function useGalleryController() {
     ratingByGroupId,
     ratingsVersion,
     viewedGroupIds,
+    markGroupViewed,
+    markGroupUnviewed,
+    adjustGroupRating,
     startRanking,
     stopRanking,
     goPrevGroup,
