@@ -121,30 +121,31 @@ export function useGalleryController() {
     })();
   }, [selectedGroupId]);
 
+  const markGroupViewed = (groupId: string) => {
+    setViewedGroupIds((prev) => {
+      if (prev[0] === groupId) return prev;
+      const next = prev.filter((id) => id !== groupId);
+      next.unshift(groupId);
+      return next.slice(0, 50);
+    });
+  };
+
   useEffect(() => {
-    if (viewedGroupRef.current && viewedGroupRef.current !== selectedGroupId) {
-      const viewedCount = viewedIndexSetRef.current.size;
-      const totalCount =
-        groups.find((group) => group.id === viewedGroupRef.current)?.size ?? 0;
-      if (totalCount > 0 && viewedCount / totalCount > 0.6) {
-        setViewedGroupIds((prev) => {
-          const next = prev.filter((id) => id !== viewedGroupRef.current);
-          next.unshift(viewedGroupRef.current as string);
-          return next.slice(0, 50);
-        });
-      }
-    }
     if (selectedGroupId !== viewedGroupRef.current) {
       viewedGroupRef.current = selectedGroupId;
       viewedIndexSetRef.current = new Set();
     }
-  }, [groups, selectedGroupId, setViewedGroupIds]);
+  }, [selectedGroupId]);
 
   useEffect(() => {
-    if (selectedImageIndex === null) return;
-    if (!selectedGroupId || viewedGroupRef.current !== selectedGroupId) return;
+    if (!selectedGroupId || selectedImageIndex === null) return;
+    if (viewedGroupRef.current !== selectedGroupId) return;
+    if (images.length === 0) return;
     viewedIndexSetRef.current.add(selectedImageIndex);
-  }, [selectedGroupId, selectedImageIndex]);
+    if (viewedIndexSetRef.current.size / images.length >= 0.6) {
+      markGroupViewed(selectedGroupId);
+    }
+  }, [images.length, selectedGroupId, selectedImageIndex]);
 
   useEffect(() => {
     if (selectedGroupId) {
