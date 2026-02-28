@@ -21,6 +21,7 @@ import {
   scanDirectory as scanDirectoryApi,
 } from "../data/galleryApi";
 import type { Group, GroupMode, ImageItem, RatingItem, RankingMode } from "../data/types";
+import { ShuffleBag } from "../utils/shuffleBag";
 
 export function useGalleryController() {
   const [rootPath, setRootPath] = useState("");
@@ -69,6 +70,22 @@ export function useGalleryController() {
   }>({ groupId: null, imageIndex: null });
   const groupRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const imageRefs = useRef<Record<number, HTMLButtonElement | null>>({});
+  const imageBagRef = useRef<ShuffleBag<ImageItem> | null>(null);
+  const imageBagGroupRef = useRef<string | null>(null);
+
+  const getNextImageIndex = (groupId: string | null, items: ImageItem[]) => {
+    if (!groupId || items.length === 0) return null;
+    if (!imageBagRef.current || imageBagGroupRef.current !== groupId) {
+      imageBagRef.current = new ShuffleBag(items, (item) => item.path);
+      imageBagGroupRef.current = groupId;
+    } else {
+      imageBagRef.current.update(items);
+    }
+    const [pick] = imageBagRef.current.next(1);
+    if (!pick) return null;
+    const index = items.findIndex((item) => item.path === pick.path);
+    return index >= 0 ? index : null;
+  };
 
   useEffect(() => {
     if (selectedGroupId === null) {
@@ -336,7 +353,8 @@ export function useGalleryController() {
 
   function randomImageInGroup() {
     if (images.length === 0) return;
-    const nextIndex = Math.floor(Math.random() * images.length);
+    const nextIndex = getNextImageIndex(selectedGroupId ?? null, images);
+    if (nextIndex === null) return;
     setSelectedImageIndex(nextIndex);
     setViewerOpen(true);
   }
@@ -349,9 +367,11 @@ export function useGalleryController() {
     const result = await listImages(nextGroup.id);
     setImages(result);
     if (result.length > 0) {
-      const nextIndex = Math.floor(Math.random() * result.length);
-      setSelectedImageIndex(nextIndex);
-      setViewerOpen(true);
+      const nextIndex = getNextImageIndex(nextGroup.id, result);
+      if (nextIndex !== null) {
+        setSelectedImageIndex(nextIndex);
+        setViewerOpen(true);
+      }
     }
   }
 

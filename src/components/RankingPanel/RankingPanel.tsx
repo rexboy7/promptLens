@@ -1,5 +1,5 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useGallery } from "../../app/GalleryContext";
 import {
   getRatings,
@@ -10,9 +10,9 @@ import {
   submitComparison,
 } from "../../data/galleryApi";
 import type { Group, ImageItem, RankingPair, RankingSequence } from "../../data/types";
+import { ShuffleBag } from "../../utils/shuffleBag";
 import ImageMeta from "../ImageMeta";
 import "./RankingPanel.css";
-
 export default function RankingPanel() {
   const {
     rankingActive,
@@ -31,6 +31,19 @@ export default function RankingPanel() {
     () => new Map(rankingGroups.map((group) => [group.id, group])),
     [rankingGroups]
   );
+  const imageBagByGroup = useRef<Map<string, ShuffleBag<ImageItem>>>(new Map());
+
+  const getImageBag = (groupId: string, items: ImageItem[]) => {
+    const bags = imageBagByGroup.current;
+    const existing = bags.get(groupId);
+    if (existing) {
+      existing.update(items);
+      return existing;
+    }
+    const created = new ShuffleBag(items, (item) => item.path);
+    bags.set(groupId, created);
+    return created;
+  };
 
   const getGroupMeta = (groupId?: string) => {
     if (!groupId) return { date: null, prompt: null, groupId: null };
@@ -155,17 +168,16 @@ export default function RankingPanel() {
     ratingPercentileValues,
   ]);
 
-  const pickTwo = (items: ImageItem[]) => {
-    const first = items[Math.floor(Math.random() * items.length)];
-    let second = items[Math.floor(Math.random() * items.length)];
-    while (second.path === first.path && items.length > 1) {
-      second = items[Math.floor(Math.random() * items.length)];
-    }
-    return [first, second];
+  const pickTwo = (groupId: string, items: ImageItem[]) => {
+    const picks = getImageBag(groupId, items).next(2);
+    return picks.length === 2 ? picks : [];
   };
 
-  const pickOne = (items: ImageItem[]) =>
-    items[Math.floor(Math.random() * items.length)];
+  const pickOne = (groupId: string, items: ImageItem[]) => {
+    const picks = getImageBag(groupId, items).next(1);
+    return picks[0] ?? null;
+  };
+
 
   const pickWeighted = <T,>(items: T[], weightFn: (item: T) => number) => {
     const weights = items.map((item) => Math.max(0.01, weightFn(item)));
@@ -240,8 +252,12 @@ export default function RankingPanel() {
       setRankingPair(null);
       return;
     }
-    const leftPick = pickTwo(leftImages);
-    const rightPick = pickTwo(rightImages);
+    const leftPick = pickTwo(leftGroup.id, leftImages);
+    const rightPick = pickTwo(rightGroup.id, rightImages);
+    if (leftPick.length < 2 || rightPick.length < 2) {
+      setRankingPair(null);
+      return;
+    }
     const rightRating = ratingsById.get(rightGroup.id)?.rating ?? 1000;
     setRankingPair({
       leftId: leftGroup.id,
@@ -296,8 +312,12 @@ export default function RankingPanel() {
       setRankingSequence(null);
       return;
     }
-    const previousImage = pickOne(previousImages);
-    const currentImage = pickOne(currentImages);
+    const previousImage = pickOne(previousMeta.group.id, previousImages);
+    const currentImage = pickOne(currentMeta.group.id, currentImages);
+    if (!previousImage || !currentImage) {
+      setRankingSequence(null);
+      return;
+    }
     const currentRating = ratingsById.get(currentMeta.group.id)?.rating ?? 1000;
     const currentMatches = ratingsById.get(currentMeta.group.id)?.matches ?? 0;
     const previousMatches = ratingsById.get(previousMeta.group.id)?.matches ?? 0;
@@ -326,8 +346,11 @@ export default function RankingPanel() {
     if (leftImages.length < 2 || rightImages.length < 2) {
       return;
     }
-    const leftPick = target === "right" ? rankingPair.leftImages : pickTwo(leftImages);
-    const rightPick = target === "left" ? rankingPair.rightImages : pickTwo(rightImages);
+    const leftPick =
+      target === "right" ? rankingPair.leftImages : pickTwo(rankingPair.leftId, leftImages);
+    const rightPick =
+      target === "left" ? rankingPair.rightImages : pickTwo(rankingPair.rightId, rightImages);
+    if (leftPick.length < 2 || rightPick.length < 2) return;
     setRankingPair({
       ...rankingPair,
       leftImages: leftPick,
@@ -339,7 +362,8 @@ export default function RankingPanel() {
     if (!rankingSequence) return;
     const currentImages = await listImages(rankingSequence.currentId);
     if (currentImages.length === 0) return;
-    const currentImage = pickOne(currentImages);
+    const currentImage = pickOne(rankingSequence.currentId, currentImages);
+    if (!currentImage) return;
     setRankingSequence({
       ...rankingSequence,
       currentImage,
@@ -350,7 +374,8 @@ export default function RankingPanel() {
     if (!rankingSequence) return;
     const previousImages = await listImages(rankingSequence.previousId);
     if (previousImages.length === 0) return;
-    const previousImage = pickOne(previousImages);
+    const previousImage = pickOne(rankingSequence.previousId, previousImages);
+    if (!previousImage) return;
     setRankingSequence({
       ...rankingSequence,
       previousImage,
