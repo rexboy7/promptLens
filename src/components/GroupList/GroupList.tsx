@@ -123,7 +123,7 @@ export default function GroupList() {
         </div>
       )}
       {groups.length === 0 && (
-        <div className="empty">No groups yet. Scan a folder.</div>
+        <div className="empty">No groups yet. Choose a folder.</div>
       )}
     </aside>
   );

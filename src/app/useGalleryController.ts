@@ -51,7 +51,6 @@ export function useGalleryController() {
     "promptlens.recentRoots",
     []
   );
-  const [autoScanned, setAutoScanned] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isSlideshowRunning, setIsSlideshowRunning] = useState(false);
   const [rankingActive, setRankingActive] = useState(false);
@@ -79,6 +78,7 @@ export function useGalleryController() {
   const imageBagGroupRef = useRef<string | null>(null);
   const viewedGroupRef = useRef<string | null>(null);
   const viewedIndexSetRef = useRef<Set<number>>(new Set());
+  const lastAutoScanRootRef = useRef<string | null>(null);
 
   const markGroupViewed = (groupId: string) => {
     setViewedGroupIds((prev) => {
@@ -96,7 +96,7 @@ export function useGalleryController() {
   const adjustGroupRating = async (groupId: string, delta: number) => {
     const current = ratingByGroupId[groupId]?.rating ?? 1000;
     const next = Math.round(current + delta);
-    await setGroupRating({ groupId, rating: next });
+    await setGroupRating({ rootPath: rootPath.trim(), groupId, rating: next });
     await loadRatings(true);
   };
 
@@ -119,12 +119,15 @@ export function useGalleryController() {
       setImages([]);
       return;
     }
+    if (!rootPath.trim()) {
+      return;
+    }
     if (suppressGroupFetchRef.current) {
       suppressGroupFetchRef.current = false;
       return;
     }
     void (async () => {
-      const result = await listImages(selectedGroupId);
+      const result = await listImages(rootPath.trim(), selectedGroupId);
       setImages(result);
       if (resumeImageIndexRef.current !== null) {
         const clampedIndex =
@@ -290,11 +293,12 @@ export function useGalleryController() {
   }, [groupMode, ratingsVersion]);
 
   useEffect(() => {
-    if (!autoScanned && rootPath.trim()) {
-      setAutoScanned(true);
-      void scanDirectoryAction();
-    }
-  }, [autoScanned, rootPath]);
+    const trimmed = rootPath.trim();
+    if (!trimmed) return;
+    if (lastAutoScanRootRef.current === trimmed) return;
+    lastAutoScanRootRef.current = trimmed;
+    void autoscanRoot(trimmed);
+  }, [rootPath]);
 
   const selectedGroup = groups.find((group) => group.id === selectedGroupId);
   const hasImages = images.length > 0;
@@ -311,12 +315,19 @@ export function useGalleryController() {
   }
 
   async function refreshGroups(nextMode: GroupMode = groupMode) {
+    if (!rootPath.trim()) {
+      setGroups([]);
+      setSelectedGroupId(null);
+      setImages([]);
+      return;
+    }
     try {
       const desiredGroupId =
         pendingSelectionRef.current.groupId ?? selectedGroupId;
       const desiredImageIndex =
         pendingSelectionRef.current.imageIndex ?? selectedImageIndex;
       const result = await listGroups({
+        rootPath: rootPath.trim(),
         dateFilter: dateFilter.trim() ? dateFilter.trim() : null,
         searchText: searchText.trim() ? searchText.trim() : null,
         groupMode: nextMode,
@@ -350,6 +361,26 @@ export function useGalleryController() {
         `Indexed ${result.total_images} images in ${result.total_batches} groups.`
       );
       updateRecentRoots(rootPath.trim());
+      await refreshGroups();
+    } catch (error) {
+      setStatus(`Scan failed: ${String(error)}`);
+    }
+  }
+
+  async function autoscanRoot(path: string) {
+    if (!path.trim()) return;
+    setStatus("Scanning...");
+    try {
+      const scanResult = await scanDirectoryApi(path);
+      setStatus(
+        `Indexed ${scanResult.total_images} images in ${scanResult.total_batches} groups.`
+      );
+      updateRecentRoots(path);
+      setStatus("Extracting prompts...");
+      const promptResult = await extractPromptsApi(path);
+      setStatus(
+        `Scanned ${promptResult.scanned} images, updated ${promptResult.updated} prompts.`
+      );
       await refreshGroups();
     } catch (error) {
       setStatus(`Scan failed: ${String(error)}`);
@@ -408,7 +439,7 @@ export function useGalleryController() {
     const nextGroup = groups[Math.floor(Math.random() * groups.length)];
     suppressGroupFetchRef.current = true;
     setSelectedGroupId(nextGroup.id);
-    const result = await listImages(nextGroup.id);
+      const result = await listImages(rootPath.trim(), nextGroup.id);
     setImages(result);
     if (result.length > 0) {
       const nextIndex = getNextImageIndex(nextGroup.id, result);
@@ -436,7 +467,7 @@ export function useGalleryController() {
     if (selectedImageIndex === null || !images[selectedImageIndex]) return;
     const target = images[selectedImageIndex];
     if (!window.confirm("Delete this image from disk?")) return;
-    await deleteImage(target.path);
+    await deleteImage(rootPath.trim(), target.path);
     setStatus("Image deleted.");
     await refreshGroups();
   }
@@ -444,15 +475,19 @@ export function useGalleryController() {
   async function deleteCurrentGroup() {
     if (!selectedGroupId) return;
     if (!window.confirm("Delete all images in this category?")) return;
-    const deleted = await deleteGroup(selectedGroupId);
+    const deleted = await deleteGroup(rootPath.trim(), selectedGroupId);
     setStatus(`Deleted ${deleted} images.`);
     await refreshGroups();
   }
 
   async function extractPromptsAction() {
+    if (!rootPath.trim()) {
+      setStatus("Please enter a root folder path.");
+      return;
+    }
     setStatus("Extracting prompts...");
     try {
-      const result = await extractPromptsApi();
+      const result = await extractPromptsApi(rootPath.trim());
       setStatus(
         `Scanned ${result.scanned} images, updated ${result.updated} prompts.`
       );
@@ -463,12 +498,15 @@ export function useGalleryController() {
   }
 
   const loadRatings = async (bumpVersion = false) => {
-    if (groups.length === 0) {
+    if (groups.length === 0 || !rootPath.trim()) {
       setRatingByGroupId({});
       return;
     }
     try {
-      const ratings = await getRatings(groups.map((group) => group.id));
+      const ratings = await getRatings(
+        rootPath.trim(),
+        groups.map((group) => group.id)
+      );
       const next: Record<string, RatingItem> = {};
       ratings.forEach((item) => {
         next[item.group_id] = item;

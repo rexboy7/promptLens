@@ -6,7 +6,6 @@ export default function RootSelector() {
     rootPath,
     recentRoots,
     handleRootChange,
-    scanDirectoryAction,
     browseForRoot,
   } = useGallery();
   return (
@@ -33,9 +32,6 @@ export default function RootSelector() {
           ))}
         </select>
       )}
-      <button type="button" onClick={scanDirectoryAction}>
-        Scan
-      </button>
       <button type="button" onClick={browseForRoot}>
         Browse
       </button>

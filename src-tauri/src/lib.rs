@@ -61,6 +61,7 @@ struct DbImageRow {
     serial: i64,
     seed: i64,
     mtime: i64,
+    prompt_id: Option<i64>,
 }
 
 fn is_date_segment(segment: &str) -> bool {
@@ -96,17 +97,29 @@ fn parse_filename(path: &Path) -> Option<(i64, i64)> {
     Some((serial, seed))
 }
 
-fn get_db_path(app: &AppHandle) -> Result<PathBuf, String> {
+fn stable_root_hash(root_path: &str) -> u64 {
+    const FNV_OFFSET: u64 = 0xcbf29ce484222325;
+    const FNV_PRIME: u64 = 0x100000001b3;
+    let mut hash = FNV_OFFSET;
+    for byte in root_path.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    hash
+}
+
+fn get_db_path(app: &AppHandle, root_path: &str) -> Result<PathBuf, String> {
     let dir = app
         .path()
         .app_data_dir()
         .map_err(|e: tauri::Error| e.to_string())?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    Ok(dir.join("promptlens.sqlite"))
+    let hash = stable_root_hash(root_path);
+    Ok(dir.join(format!("promptlens_{:016x}.sqlite", hash)))
 }
 
-fn open_db(app: &AppHandle) -> Result<Connection, String> {
-    let db_path = get_db_path(app)?;
+fn open_db(app: &AppHandle, root_path: &str) -> Result<Connection, String> {
+    let db_path = get_db_path(app, root_path)?;
     Connection::open(db_path).map_err(|e| e.to_string())
 }
 
@@ -229,7 +242,7 @@ fn build_index(conn: &mut Connection, root_path: &str) -> Result<ScanResult, Str
     let mut db_items: HashMap<String, DbImageRow> = HashMap::new();
     {
         let mut stmt = conn
-            .prepare("SELECT path, date, serial, seed, mtime FROM images")
+            .prepare("SELECT path, date, serial, seed, mtime, prompt_id FROM images")
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([], |row| {
@@ -239,6 +252,7 @@ fn build_index(conn: &mut Connection, root_path: &str) -> Result<ScanResult, Str
                     serial: row.get(2)?,
                     seed: row.get(3)?,
                     mtime: row.get(4)?,
+                    prompt_id: row.get(5)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -249,19 +263,22 @@ fn build_index(conn: &mut Connection, root_path: &str) -> Result<ScanResult, Str
     }
 
     let mut dates_changed: HashSet<String> = HashSet::new();
+    let mut prompt_by_path: HashMap<String, Option<i64>> = HashMap::new();
     for (path, item) in &items_by_path {
         match db_items.remove(path) {
             None => {
                 dates_changed.insert(item.date.clone());
             }
             Some(db_item) => {
-                if db_item.mtime != item.mtime
-                    || db_item.serial != item.serial
-                    || db_item.seed != item.seed
-                    || db_item.date != item.date
-                {
+                let unchanged = db_item.mtime == item.mtime
+                    && db_item.serial == item.serial
+                    && db_item.seed == item.seed
+                    && db_item.date == item.date;
+                if !unchanged {
                     dates_changed.insert(db_item.date);
                     dates_changed.insert(item.date.clone());
+                } else {
+                    prompt_by_path.insert(path.clone(), db_item.prompt_id);
                 }
             }
         }
@@ -320,10 +337,13 @@ fn build_index(conn: &mut Connection, root_path: &str) -> Result<ScanResult, Str
                     .map_err(|e| e.to_string())?;
                 }
 
+                let prompt_id = prompt_by_path
+                    .get(&item.path)
+                    .and_then(|value| *value);
                 tx.execute(
                     r#"
-                    INSERT INTO images (path, date, serial, seed, batch_id, mtime)
-                    VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                    INSERT INTO images (path, date, serial, seed, batch_id, mtime, prompt_id)
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
                     "#,
                     params![
                         item.path,
@@ -331,7 +351,8 @@ fn build_index(conn: &mut Connection, root_path: &str) -> Result<ScanResult, Str
                         item.serial,
                         item.seed,
                         current_batch_id.unwrap(),
-                        item.mtime
+                        item.mtime,
+                        prompt_id
                     ],
                 )
                 .map_err(|e| e.to_string())?;
@@ -442,7 +463,7 @@ fn extract_positive_prompt(text: &str) -> String {
 
 #[tauri::command]
 fn scan_directory(app: AppHandle, root_path: String) -> Result<ScanResult, String> {
-    let mut conn = open_db(&app)?;
+    let mut conn = open_db(&app, &root_path)?;
     init_db(&conn)?;
     build_index(&mut conn, &root_path)
 }
@@ -450,11 +471,12 @@ fn scan_directory(app: AppHandle, root_path: String) -> Result<ScanResult, Strin
 #[tauri::command]
 fn list_groups(
     app: AppHandle,
+    root_path: String,
     date_filter: Option<String>,
     search_text: Option<String>,
     group_mode: Option<String>,
 ) -> Result<Vec<GroupItem>, String> {
-    let conn = open_db(&app)?;
+    let conn = open_db(&app, &root_path)?;
     init_db(&conn)?;
     let mode = group_mode.unwrap_or_else(|| "prompt".to_string());
     let search = search_text.unwrap_or_default().trim().to_lowercase();
@@ -718,8 +740,8 @@ fn list_groups(
 }
 
 #[tauri::command]
-fn list_images(app: AppHandle, group_id: String) -> Result<Vec<ImageItem>, String> {
-    let conn = open_db(&app)?;
+fn list_images(app: AppHandle, root_path: String, group_id: String) -> Result<Vec<ImageItem>, String> {
+    let conn = open_db(&app, &root_path)?;
     init_db(&conn)?;
     let (group_type, raw_id) = group_id
         .split_once(':')
@@ -808,8 +830,8 @@ fn delete_images_by_query(
 }
 
 #[tauri::command]
-fn delete_image(app: AppHandle, image_path: String) -> Result<bool, String> {
-    let mut conn = open_db(&app)?;
+fn delete_image(app: AppHandle, root_path: String, image_path: String) -> Result<bool, String> {
+    let mut conn = open_db(&app, &root_path)?;
     init_db(&conn)?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     let _ = fs::remove_file(&image_path);
@@ -832,8 +854,12 @@ fn delete_image(app: AppHandle, image_path: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
-fn get_ratings(app: AppHandle, group_ids: Vec<String>) -> Result<Vec<RatingItem>, String> {
-    let mut conn = open_db(&app)?;
+fn get_ratings(
+    app: AppHandle,
+    root_path: String,
+    group_ids: Vec<String>,
+) -> Result<Vec<RatingItem>, String> {
+    let mut conn = open_db(&app, &root_path)?;
     init_db(&conn)?;
 
     let tx = conn.transaction().map_err(|e| e.to_string())?;
@@ -876,11 +902,12 @@ fn get_ratings(app: AppHandle, group_ids: Vec<String>) -> Result<Vec<RatingItem>
 #[tauri::command]
 fn submit_comparison(
     app: AppHandle,
+    root_path: String,
     left_id: String,
     right_id: String,
     winner_id: String,
 ) -> Result<bool, String> {
-    let mut conn = open_db(&app)?;
+    let mut conn = open_db(&app, &root_path)?;
     init_db(&conn)?;
 
     let tx = conn.transaction().map_err(|e| e.to_string())?;
@@ -954,8 +981,13 @@ fn submit_comparison(
 }
 
 #[tauri::command]
-fn set_group_rating(app: AppHandle, group_id: String, rating: f64) -> Result<bool, String> {
-    let mut conn = open_db(&app)?;
+fn set_group_rating(
+    app: AppHandle,
+    root_path: String,
+    group_id: String,
+    rating: f64,
+) -> Result<bool, String> {
+    let mut conn = open_db(&app, &root_path)?;
     init_db(&conn)?;
 
     let tx = conn.transaction().map_err(|e| e.to_string())?;
@@ -987,9 +1019,10 @@ fn set_group_rating(app: AppHandle, group_id: String, rating: f64) -> Result<boo
 #[tauri::command]
 fn get_rating_percentiles(
     app: AppHandle,
+    root_path: String,
     percentiles: Vec<f64>,
 ) -> Result<Vec<f64>, String> {
-    let conn = open_db(&app)?;
+    let conn = open_db(&app, &root_path)?;
     init_db(&conn)?;
 
     let mut stmt = conn
@@ -1023,8 +1056,8 @@ fn get_rating_percentiles(
 }
 
 #[tauri::command]
-fn delete_group(app: AppHandle, group_id: String) -> Result<usize, String> {
-    let mut conn = open_db(&app)?;
+fn delete_group(app: AppHandle, root_path: String, group_id: String) -> Result<usize, String> {
+    let mut conn = open_db(&app, &root_path)?;
     init_db(&conn)?;
     let (group_type, raw_id) = group_id
         .split_once(':')
@@ -1075,8 +1108,8 @@ fn delete_group(app: AppHandle, group_id: String) -> Result<usize, String> {
 }
 
 #[tauri::command]
-fn extract_prompts(app: AppHandle) -> Result<PromptResult, String> {
-    let mut conn = open_db(&app)?;
+fn extract_prompts(app: AppHandle, root_path: String) -> Result<PromptResult, String> {
+    let mut conn = open_db(&app, &root_path)?;
     init_db(&conn)?;
 
     let rows: Vec<(i64, String)> = {

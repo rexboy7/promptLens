@@ -15,6 +15,7 @@ import ImageMeta from "../ImageMeta";
 import "./RankingPanel.css";
 export default function RankingPanel() {
   const {
+    rootPath,
     rankingActive,
     rankingMode,
     startRanking,
@@ -56,8 +57,13 @@ export default function RankingPanel() {
   };
 
   async function fetchRankingGroups() {
+    if (!rootPath.trim()) {
+      setRankingGroups([]);
+      return [];
+    }
     try {
       const result = await listGroups({
+        rootPath: rootPath.trim(),
         groupMode: "prompt",
         dateFilter: null,
         searchText: null,
@@ -230,7 +236,10 @@ export default function RankingPanel() {
       setRankingPair(null);
       return;
     }
-    const ratings = await getRatings(eligible.map((group) => group.id));
+    const ratings = await getRatings(
+      rootPath.trim(),
+      eligible.map((group) => group.id)
+    );
     const ratingsById = new Map(ratings.map((item) => [item.group_id, item]));
     const withMeta = eligible.map((group) => ({
       group,
@@ -246,8 +255,8 @@ export default function RankingPanel() {
     });
     const leftGroup = leftMeta.group;
     const rightGroup = rightMeta.group;
-    const leftImages = await listImages(leftGroup.id);
-    const rightImages = await listImages(rightGroup.id);
+    const leftImages = await listImages(rootPath.trim(), leftGroup.id);
+    const rightImages = await listImages(rootPath.trim(), rightGroup.id);
     if (leftImages.length < 2 || rightImages.length < 2) {
       setRankingPair(null);
       return;
@@ -279,14 +288,20 @@ export default function RankingPanel() {
       setRankingSequence(null);
       return;
     }
-    const ratings = await getRatings(eligible.map((group) => group.id));
+    const ratings = await getRatings(
+      rootPath.trim(),
+      eligible.map((group) => group.id)
+    );
     const ratingsById = new Map(ratings.map((item) => [item.group_id, item]));
     const withMeta = eligible.map((group) => ({
       group,
       rating: ratingsById.get(group.id)?.rating ?? 1000,
       matches: ratingsById.get(group.id)?.matches ?? 0,
     }));
-    const percentiles = await getRatingPercentiles(ratingPercentiles);
+    const percentiles = await getRatingPercentiles(
+      rootPath.trim(),
+      ratingPercentiles
+    );
     setRatingPercentileValues(percentiles);
     const previousMeta = previousId
       ? withMeta.find((item) => item.group.id === previousId)
@@ -306,8 +321,11 @@ export default function RankingPanel() {
       const ratingDistance = Math.abs(item.rating - previousRating);
       return (1 / (1 + item.matches)) * (1 + ratingDistance / 250);
     });
-    const previousImages = await listImages(previousMeta.group.id);
-    const currentImages = await listImages(currentMeta.group.id);
+    const previousImages = await listImages(
+      rootPath.trim(),
+      previousMeta.group.id
+    );
+    const currentImages = await listImages(rootPath.trim(), currentMeta.group.id);
     if (previousImages.length === 0 || currentImages.length === 0) {
       setRankingSequence(null);
       return;
@@ -338,10 +356,10 @@ export default function RankingPanel() {
     const [leftImages, rightImages] = await Promise.all([
       target === "right"
         ? Promise.resolve(rankingPair.leftImages)
-        : listImages(rankingPair.leftId),
+        : listImages(rootPath.trim(), rankingPair.leftId),
       target === "left"
         ? Promise.resolve(rankingPair.rightImages)
-        : listImages(rankingPair.rightId),
+        : listImages(rootPath.trim(), rankingPair.rightId),
     ]);
     if (leftImages.length < 2 || rightImages.length < 2) {
       return;
@@ -360,7 +378,10 @@ export default function RankingPanel() {
 
   async function rerollRankingSequenceImage() {
     if (!rankingSequence) return;
-    const currentImages = await listImages(rankingSequence.currentId);
+    const currentImages = await listImages(
+      rootPath.trim(),
+      rankingSequence.currentId
+    );
     if (currentImages.length === 0) return;
     const currentImage = pickOne(rankingSequence.currentId, currentImages);
     if (!currentImage) return;
@@ -372,7 +393,10 @@ export default function RankingPanel() {
 
   async function rerollRankingSequencePreviousImage() {
     if (!rankingSequence) return;
-    const previousImages = await listImages(rankingSequence.previousId);
+    const previousImages = await listImages(
+      rootPath.trim(),
+      rankingSequence.previousId
+    );
     if (previousImages.length === 0) return;
     const previousImage = pickOne(rankingSequence.previousId, previousImages);
     if (!previousImage) return;
@@ -394,6 +418,7 @@ export default function RankingPanel() {
             ? rankingPair.rightId
             : side;
       await submitComparison({
+        rootPath: rootPath.trim(),
         leftId: rankingPair.leftId,
         rightId: rankingPair.rightId,
         winnerId,
@@ -409,6 +434,7 @@ export default function RankingPanel() {
           ? rankingSequence.currentId
           : side;
     await submitComparison({
+      rootPath: rootPath.trim(),
       leftId: rankingSequence.previousId,
       rightId: rankingSequence.currentId,
       winnerId,
@@ -423,7 +449,11 @@ export default function RankingPanel() {
       ratingPercentileValues.length === ratingPercentiles.length
         ? ratingAtIndex(ratingPercentileValues, index)
         : ratingFallback(score);
-    await setGroupRating({ groupId: rankingSequence.currentId, rating });
+    await setGroupRating({
+      rootPath: rootPath.trim(),
+      groupId: rankingSequence.currentId,
+      rating,
+    });
     await buildRankingSequence(rankingGroups, rankingSequence.currentId);
   }
 

@@ -10,7 +10,6 @@ export default function Filters() {
     setDateFilter,
     setGroupMode,
     refreshGroups,
-    extractPromptsAction,
   } = useGallery();
   return (
     <section className="filters">
@@ -59,9 +58,6 @@ export default function Filters() {
           Score
         </button>
       </div>
-      <button type="button" onClick={extractPromptsAction}>
-        Extract Prompts
-      </button>
       <span className="status">{status}</span>
     </section>
   );
