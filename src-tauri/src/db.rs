@@ -2,6 +2,7 @@ use rusqlite::Connection;
 use std::fs;
 use std::path::PathBuf;
 use tauri::AppHandle;
+use tauri::Manager;
 
 const DB_SCHEMA_VERSION: i32 = 4;
 
