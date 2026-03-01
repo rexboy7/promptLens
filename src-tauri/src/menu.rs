@@ -21,6 +21,8 @@ pub fn build_menu<R: Runtime>(app: &tauri::App<R>) -> Result<Menu<R>, tauri::Err
     let open_folder =
         MenuItem::with_id(app, "open_folder", "Open Folder...", true, Option::<&str>::None)?;
     let rescan = MenuItem::with_id(app, "rescan", "Rescan", true, Option::<&str>::None)?;
+    let fix_batches =
+        MenuItem::with_id(app, "fix_batches", "Fix Batch Splits", true, Option::<&str>::None)?;
     let recent_empty = MenuItem::with_id(
         app,
         "recent_none",
@@ -38,7 +40,7 @@ pub fn build_menu<R: Runtime>(app: &tauri::App<R>) -> Result<Menu<R>, tauri::Err
         app,
         "File",
         true,
-        &[&open_folder, &rescan, &recent_submenu],
+        &[&open_folder, &rescan, &fix_batches, &recent_submenu],
     )?;
 
     let random_image = MenuItem::with_id(

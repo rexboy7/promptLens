@@ -14,6 +14,7 @@ import type { Command } from "./commands";
 import {
   deleteGroup,
   deleteImage,
+  fixBatches,
   getRatings,
   listGroups,
   listImages,
@@ -250,6 +251,9 @@ export function useGalleryController() {
       case "RESCAN":
         void scanDirectoryAction();
         break;
+      case "FIX_BATCHES":
+        void fixBatchesAction();
+        break;
       case "RANDOM_IMAGE":
         randomImageInGroup();
         break;
@@ -392,6 +396,30 @@ export function useGalleryController() {
       await refreshGroups();
     } catch (error) {
       setStatus(`Scan failed: ${String(error)}`);
+    }
+  }
+
+  async function fixBatchesAction() {
+    if (!rootPath.trim()) {
+      setStatus("Please enter a root folder path.");
+      return;
+    }
+    if (
+      !window.confirm(
+        "Fix batch splits across date folders? This will rename/move files and then rescan."
+      )
+    ) {
+      return;
+    }
+    setStatus("Fixing batch splits...");
+    try {
+      const result = await fixBatches(rootPath.trim());
+      await scanDirectoryAction();
+      setStatus(
+        `Fixed batches: ${result.moved} moved, ${result.renamed} renumbered across ${result.transitions} transition(s).`
+      );
+    } catch (error) {
+      setStatus(`Fix batches failed: ${String(error)}`);
     }
   }
 

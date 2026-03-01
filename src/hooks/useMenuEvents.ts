@@ -16,6 +16,8 @@ export function useMenuEvents({ dispatch }: MenuHandlers) {
         dispatch({ type: "OPEN_FOLDER" });
       } else if (action === "rescan") {
         dispatch({ type: "RESCAN" });
+      } else if (action === "fix_batches") {
+        dispatch({ type: "FIX_BATCHES" });
       } else if (action === "random_any") {
         dispatch({ type: "RANDOM_ANY" });
       } else if (action === "slideshow") {

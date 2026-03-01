@@ -8,6 +8,7 @@ export type Command =
   | { type: "OPEN_VIEWER" }
   | { type: "OPEN_FOLDER" }
   | { type: "RESCAN" }
+  | { type: "FIX_BATCHES" }
   | { type: "RANDOM_IMAGE" }
   | { type: "RANDOM_ANY" }
   | { type: "TOGGLE_SLIDESHOW"; acrossGroups: boolean }

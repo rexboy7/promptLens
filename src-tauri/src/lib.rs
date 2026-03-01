@@ -20,7 +20,8 @@ pub fn run() {
             commands::ratings::get_ratings,
             commands::ratings::submit_comparison,
             commands::ratings::set_group_rating,
-            commands::ratings::get_rating_percentiles
+            commands::ratings::get_rating_percentiles,
+            commands::fix_batches::fix_batches
         ])
         .setup(|app| {
             let menu = menu::build_menu(app)?;

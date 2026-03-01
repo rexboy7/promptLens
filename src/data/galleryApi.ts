@@ -76,3 +76,13 @@ export async function getRatingPercentiles(
 ): Promise<number[]> {
   return invoke<number[]>("get_rating_percentiles", { rootPath, percentiles });
 }
+
+export type FixBatchesResult = {
+  transitions: number;
+  moved: number;
+  renamed: number;
+};
+
+export async function fixBatches(rootPath: string): Promise<FixBatchesResult> {
+  return invoke<FixBatchesResult>("fix_batches", { rootPath });
+}
