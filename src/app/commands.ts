@@ -10,5 +10,4 @@ export type Command =
   | { type: "RANDOM_ANY" }
   | { type: "TOGGLE_SLIDESHOW"; acrossGroups: boolean }
   | { type: "DELETE_IMAGE" }
-  | { type: "DELETE_GROUP" }
-  | { type: "EXTRACT_PROMPTS" };
+  | { type: "DELETE_GROUP" };

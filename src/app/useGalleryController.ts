@@ -14,7 +14,6 @@ import type { Command } from "./commands";
 import {
   deleteGroup,
   deleteImage,
-  extractPrompts as extractPromptsApi,
   getRatings,
   listGroups,
   listImages,
@@ -260,9 +259,6 @@ export function useGalleryController() {
       case "DELETE_GROUP":
         void deleteCurrentGroup();
         break;
-      case "EXTRACT_PROMPTS":
-        void extractPromptsAction();
-        break;
     }
   };
 
@@ -376,11 +372,6 @@ export function useGalleryController() {
         `Indexed ${scanResult.total_images} images in ${scanResult.total_batches} groups.`
       );
       updateRecentRoots(path);
-      setStatus("Extracting prompts...");
-      const promptResult = await extractPromptsApi(path);
-      setStatus(
-        `Scanned ${promptResult.scanned} images, updated ${promptResult.updated} prompts.`
-      );
       await refreshGroups();
     } catch (error) {
       setStatus(`Scan failed: ${String(error)}`);
@@ -480,23 +471,6 @@ export function useGalleryController() {
     await refreshGroups();
   }
 
-  async function extractPromptsAction() {
-    if (!rootPath.trim()) {
-      setStatus("Please enter a root folder path.");
-      return;
-    }
-    setStatus("Extracting prompts...");
-    try {
-      const result = await extractPromptsApi(rootPath.trim());
-      setStatus(
-        `Scanned ${result.scanned} images, updated ${result.updated} prompts.`
-      );
-      await refreshGroups();
-    } catch (error) {
-      setStatus(`Prompt extraction failed: ${String(error)}`);
-    }
-  }
-
   const loadRatings = async (bumpVersion = false) => {
     if (groups.length === 0 || !rootPath.trim()) {
       setRatingByGroupId({});
@@ -573,7 +547,6 @@ export function useGalleryController() {
     toggleSlideshow,
     deleteCurrentImage,
     deleteCurrentGroup,
-    extractPromptsAction,
     rankingActive,
     rankingMode,
     ratingByGroupId,

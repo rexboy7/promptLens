@@ -23,11 +23,6 @@ export type ScanResult = {
   total_batches: number;
 };
 
-export type PromptResult = {
-  scanned: number;
-  updated: number;
-};
-
 export type RatingItem = {
   group_id: string;
   rating: number;

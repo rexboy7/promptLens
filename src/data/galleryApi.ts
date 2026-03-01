@@ -3,7 +3,6 @@ import type {
   Group,
   GroupMode,
   ImageItem,
-  PromptResult,
   RatingItem,
   ScanResult,
 } from "./types";
@@ -31,10 +30,6 @@ export async function listImages(
   groupId: string
 ): Promise<ImageItem[]> {
   return invoke<ImageItem[]>("list_images", { rootPath, groupId });
-}
-
-export async function extractPrompts(rootPath: string): Promise<PromptResult> {
-  return invoke<PromptResult>("extract_prompts", { rootPath });
 }
 
 export async function deleteImage(

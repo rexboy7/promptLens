@@ -17,10 +17,6 @@ struct ScanResult {
 }
 
 #[derive(Serialize)]
-struct PromptResult {
-    scanned: usize,
-    updated: usize,
-}
 
 #[derive(Serialize)]
 struct GroupItem {
@@ -461,11 +457,75 @@ fn extract_positive_prompt(text: &str) -> String {
     text.trim().trim_end_matches(',').trim().to_string()
 }
 
+fn extract_prompts_for_unparsed(conn: &mut Connection) -> Result<(), String> {
+    let rows: Vec<(i64, String)> = {
+        let mut stmt = conn
+            .prepare("SELECT id, path FROM images WHERE prompt_id IS NULL")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))
+            .map_err(|e| e.to_string())?;
+        let mut collected = Vec::new();
+        for row in rows {
+            collected.push(row.map_err(|e| e.to_string())?);
+        }
+        collected
+    };
+
+    if rows.is_empty() {
+        return Ok(());
+    }
+
+    let mut updates: Vec<(i64, String)> = Vec::new();
+    for (image_id, path) in rows {
+        if let Some(prompt) = extract_parameters_from_png(Path::new(&path)) {
+            let positive = extract_positive_prompt(&prompt);
+            if !positive.is_empty() {
+                updates.push((image_id, positive));
+            }
+        }
+    }
+
+    if updates.is_empty() {
+        return Ok(());
+    }
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    for (image_id, prompt) in updates {
+        tx.execute(
+            "INSERT OR IGNORE INTO prompts (text) VALUES (?1)",
+            params![prompt],
+        )
+        .map_err(|e| e.to_string())?;
+        let prompt_id: i64 = tx
+            .query_row(
+                "SELECT id FROM prompts WHERE text = ?1",
+                params![prompt],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        tx.execute(
+            "INSERT OR REPLACE INTO prompts_fts (rowid, text) VALUES (?1, ?2)",
+            params![prompt_id, prompt],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.execute(
+            "UPDATE images SET prompt_id = ?1 WHERE id = ?2",
+            params![prompt_id, image_id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 fn scan_directory(app: AppHandle, root_path: String) -> Result<ScanResult, String> {
     let mut conn = open_db(&app, &root_path)?;
     init_db(&conn)?;
-    build_index(&mut conn, &root_path)
+    let result = build_index(&mut conn, &root_path)?;
+    extract_prompts_for_unparsed(&mut conn)?;
+    Ok(result)
 }
 
 #[tauri::command]
@@ -1107,69 +1167,6 @@ fn delete_group(app: AppHandle, root_path: String, group_id: String) -> Result<u
     Err("Unknown group id type".to_string())
 }
 
-#[tauri::command]
-fn extract_prompts(app: AppHandle, root_path: String) -> Result<PromptResult, String> {
-    let mut conn = open_db(&app, &root_path)?;
-    init_db(&conn)?;
-
-    let rows: Vec<(i64, String)> = {
-        let mut stmt = conn
-            .prepare("SELECT id, path FROM images WHERE prompt_id IS NULL")
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))
-            .map_err(|e| e.to_string())?;
-        let mut collected = Vec::new();
-        for row in rows {
-            collected.push(row.map_err(|e| e.to_string())?);
-        }
-        collected
-    };
-
-    let mut updates: Vec<(i64, String)> = Vec::new();
-    let mut scanned = 0usize;
-    for (image_id, path) in rows {
-        scanned += 1;
-        if let Some(prompt) = extract_parameters_from_png(Path::new(&path)) {
-            let positive = extract_positive_prompt(&prompt);
-            if !positive.is_empty() {
-                updates.push((image_id, positive));
-            }
-        }
-    }
-
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
-    let mut updated = 0usize;
-    for (image_id, prompt) in updates {
-        tx.execute(
-            "INSERT OR IGNORE INTO prompts (text) VALUES (?1)",
-            params![prompt],
-        )
-        .map_err(|e| e.to_string())?;
-        let prompt_id: i64 = tx
-            .query_row(
-                "SELECT id FROM prompts WHERE text = ?1",
-                params![prompt],
-                |row| row.get(0),
-            )
-            .map_err(|e| e.to_string())?;
-        tx.execute(
-            "INSERT OR REPLACE INTO prompts_fts (rowid, text) VALUES (?1, ?2)",
-            params![prompt_id, prompt],
-        )
-        .map_err(|e| e.to_string())?;
-        tx.execute(
-            "UPDATE images SET prompt_id = ?1 WHERE id = ?2",
-            params![prompt_id, image_id],
-        )
-        .map_err(|e| e.to_string())?;
-        updated += 1;
-    }
-    tx.commit().map_err(|e| e.to_string())?;
-
-    Ok(PromptResult { scanned, updated })
-}
-
 fn build_menu<R: Runtime>(app: &tauri::App<R>) -> Result<Menu<R>, tauri::Error> {
     let random_image = MenuItem::with_id(
         app,
@@ -1210,14 +1207,6 @@ fn build_menu<R: Runtime>(app: &tauri::App<R>) -> Result<Menu<R>, tauri::Error> 
         true,
         Option::<&str>::None,
     )?;
-    let extract_prompts = MenuItem::with_id(
-        app,
-        "extract_prompts",
-        "Extract Prompts",
-        true,
-        Option::<&str>::None,
-    )?;
-
     let actions_submenu = Submenu::with_items(
         app,
         "Actions",
@@ -1230,7 +1219,6 @@ fn build_menu<R: Runtime>(app: &tauri::App<R>) -> Result<Menu<R>, tauri::Error> 
             &delete_image,
             &delete_group,
             &fullscreen,
-            &extract_prompts,
         ],
     )?;
 
@@ -1248,7 +1236,6 @@ pub fn run() {
             list_images,
             delete_image,
             delete_group,
-            extract_prompts,
             get_ratings,
             submit_comparison,
             set_group_rating,
