@@ -24,6 +24,7 @@ export function useMenuEvents({ dispatch }: MenuHandlers) {
         dispatch({ type: "DELETE_GROUP" });
       } else if (action === "fullscreen") {
         dispatch({ type: "TOGGLE_FULLSCREEN" });
+      }
     });
     return () => {
       void unlistenPromise.then((unlisten) => unlisten());
