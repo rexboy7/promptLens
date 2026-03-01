@@ -1,10 +1,7 @@
+mod commands;
 mod db;
-mod delete;
-mod indexer;
 mod menu;
 mod prompts;
-mod queries;
-mod ratings;
 mod types;
 
 use tauri::{Emitter, Manager};
@@ -15,15 +12,15 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
-            indexer::scan_directory,
-            queries::list_groups,
-            queries::list_images,
-            delete::delete_image,
-            delete::delete_group,
-            ratings::get_ratings,
-            ratings::submit_comparison,
-            ratings::set_group_rating,
-            ratings::get_rating_percentiles
+            commands::indexer::scan_directory,
+            commands::queries::list_groups,
+            commands::queries::list_images,
+            commands::delete::delete_image,
+            commands::delete::delete_group,
+            commands::ratings::get_ratings,
+            commands::ratings::submit_comparison,
+            commands::ratings::set_group_rating,
+            commands::ratings::get_rating_percentiles
         ])
         .setup(|app| {
             let menu = menu::build_menu(app)?;

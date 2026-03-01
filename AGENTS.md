@@ -146,10 +146,18 @@ Images can be grouped by:
 
 ### Backend
 - `src-tauri/src/lib.rs`:
+  - Tauri entrypoint: wiring, menu setup, command registration.
+- `src-tauri/src/db.rs`:
   - SQLite schema and migrations.
-  - Tauri commands (scan, list groups, list images, delete, ranking).
+- `src-tauri/src/commands/`:
+  - `indexer.rs`: scan + incremental index.
+  - `queries.rs`: list groups/images.
+  - `ratings.rs`: Elo rating + percentiles.
+  - `delete.rs`: delete image/group.
+- `src-tauri/src/prompts.rs`:
   - PNG metadata parsing and prompt extraction.
-  - Incremental scan logic.
+- `src-tauri/src/types.rs`:
+  - Shared DTOs returned to frontend.
 
 - `src-tauri/tauri.conf.json`:
   - Title bar, window, and asset access configuration.
