@@ -1258,6 +1258,34 @@ fn build_menu<R: Runtime>(app: &tauri::App<R>) -> Result<Menu<R>, tauri::Error> 
         true,
         Option::<&str>::None,
     )?;
+    let mark_group_read = MenuItem::with_id(
+        app,
+        "mark_group_read",
+        "Mark Group as Read",
+        true,
+        Option::<&str>::None,
+    )?;
+    let mark_group_unread = MenuItem::with_id(
+        app,
+        "mark_group_unread",
+        "Mark Group as Unread",
+        true,
+        Option::<&str>::None,
+    )?;
+    let score_up = MenuItem::with_id(
+        app,
+        "score_up",
+        "Score Up",
+        true,
+        Option::<&str>::None,
+    )?;
+    let score_down = MenuItem::with_id(
+        app,
+        "score_down",
+        "Score Down",
+        true,
+        Option::<&str>::None,
+    )?;
     let start_ranking =
         MenuItem::with_id(app, "start_ranking", "Start Ranking", true, Option::<&str>::None)?;
     let start_sequential_ranking = MenuItem::with_id(
@@ -1272,6 +1300,11 @@ fn build_menu<R: Runtime>(app: &tauri::App<R>) -> Result<Menu<R>, tauri::Error> 
         "Edit",
         true,
         &[
+            &mark_group_read,
+            &mark_group_unread,
+            &score_up,
+            &score_down,
+            &PredefinedMenuItem::separator(app)?,
             &delete_image,
             &delete_group,
             &PredefinedMenuItem::separator(app)?,

@@ -11,6 +11,10 @@ export type Command =
   | { type: "RANDOM_IMAGE" }
   | { type: "RANDOM_ANY" }
   | { type: "TOGGLE_SLIDESHOW"; acrossGroups: boolean }
+  | { type: "MARK_GROUP_READ" }
+  | { type: "MARK_GROUP_UNREAD" }
+  | { type: "SCORE_UP" }
+  | { type: "SCORE_DOWN" }
   | { type: "DELETE_IMAGE" }
   | { type: "DELETE_GROUP" }
   | { type: "START_RANKING" }

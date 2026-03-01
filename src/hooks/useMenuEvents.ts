@@ -22,6 +22,14 @@ export function useMenuEvents({ dispatch }: MenuHandlers) {
         dispatch({ type: "TOGGLE_SLIDESHOW", acrossGroups: false });
       } else if (action === "slideshow_any") {
         dispatch({ type: "TOGGLE_SLIDESHOW", acrossGroups: true });
+      } else if (action === "mark_group_read") {
+        dispatch({ type: "MARK_GROUP_READ" });
+      } else if (action === "mark_group_unread") {
+        dispatch({ type: "MARK_GROUP_UNREAD" });
+      } else if (action === "score_up") {
+        dispatch({ type: "SCORE_UP" });
+      } else if (action === "score_down") {
+        dispatch({ type: "SCORE_DOWN" });
       } else if (action === "delete_image") {
         dispatch({ type: "DELETE_IMAGE" });
       } else if (action === "delete_group") {

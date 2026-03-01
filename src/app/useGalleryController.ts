@@ -259,6 +259,26 @@ export function useGalleryController() {
       case "TOGGLE_SLIDESHOW":
         toggleSlideshow({ acrossGroups: command.acrossGroups });
         break;
+      case "MARK_GROUP_READ":
+        if (selectedGroupId) {
+          markGroupViewed(selectedGroupId);
+        }
+        break;
+      case "MARK_GROUP_UNREAD":
+        if (selectedGroupId) {
+          markGroupUnviewed(selectedGroupId);
+        }
+        break;
+      case "SCORE_UP":
+        if (selectedGroupId && selectedGroup?.group_type === "prompt") {
+          void adjustGroupRating(selectedGroupId, 40);
+        }
+        break;
+      case "SCORE_DOWN":
+        if (selectedGroupId && selectedGroup?.group_type === "prompt") {
+          void adjustGroupRating(selectedGroupId, -40);
+        }
+        break;
       case "DELETE_IMAGE":
         void deleteCurrentImage();
         break;
