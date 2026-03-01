@@ -244,6 +244,12 @@ export function useGalleryController() {
       case "OPEN_VIEWER":
         openViewer();
         break;
+      case "OPEN_FOLDER":
+        void browseForRoot();
+        break;
+      case "RESCAN":
+        void scanDirectoryAction();
+        break;
       case "RANDOM_IMAGE":
         randomImageInGroup();
         break;
@@ -258,6 +264,12 @@ export function useGalleryController() {
         break;
       case "DELETE_GROUP":
         void deleteCurrentGroup();
+        break;
+      case "START_RANKING":
+        void startRanking("pair");
+        break;
+      case "START_SEQUENTIAL_RANKING":
+        void startRanking("sequential");
         break;
     }
   };
