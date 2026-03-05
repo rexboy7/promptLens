@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { open } from "@tauri-apps/plugin-dialog";
+import { confirm, open } from "@tauri-apps/plugin-dialog";
 import { useKeyboard } from "../hooks/useKeyboard";
 import { useMenuEvents } from "../hooks/useMenuEvents";
 import {
@@ -404,11 +404,11 @@ export function useGalleryController() {
       setStatus("Please enter a root folder path.");
       return;
     }
-    if (
-      !window.confirm(
-        "Fix batch splits across date folders? This will rename/move files and then rescan."
-      )
-    ) {
+    const confirmed = await confirm(
+      "Fix batch splits across date folders? This will rename/move files and then rescan.",
+      { title: "Fix Batch Splits", kind: "warning" }
+    );
+    if (!confirmed) {
       return;
     }
     setStatus("Fixing batch splits...");
@@ -517,7 +517,11 @@ export function useGalleryController() {
   async function deleteCurrentImage() {
     if (selectedImageIndex === null || !images[selectedImageIndex]) return;
     const target = images[selectedImageIndex];
-    if (!window.confirm("Delete this image from disk?")) return;
+    const confirmed = await confirm("Delete this image from disk?", {
+      title: "Delete Image",
+      kind: "warning",
+    });
+    if (!confirmed) return;
     await deleteImage(rootPath.trim(), target.path);
     setStatus("Image deleted.");
     await refreshGroups();
@@ -525,7 +529,11 @@ export function useGalleryController() {
 
   async function deleteCurrentGroup() {
     if (!selectedGroupId) return;
-    if (!window.confirm("Delete all images in this category?")) return;
+    const confirmed = await confirm("Delete all images in this category?", {
+      title: "Delete Group",
+      kind: "warning",
+    });
+    if (!confirmed) return;
     const deleted = await deleteGroup(rootPath.trim(), selectedGroupId);
     setStatus(`Deleted ${deleted} images.`);
     await refreshGroups();

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { Command } from "../app/commands";
 
@@ -7,45 +7,50 @@ type MenuHandlers = {
 };
 
 export function useMenuEvents({ dispatch }: MenuHandlers) {
+  const dispatchRef = useRef(dispatch);
+  useEffect(() => {
+    dispatchRef.current = dispatch;
+  }, [dispatch]);
+
   useEffect(() => {
     const unlistenPromise = listen<string>("menu-action", (event) => {
       const action = event.payload;
       if (action === "random_image") {
-        dispatch({ type: "RANDOM_IMAGE" });
+        dispatchRef.current({ type: "RANDOM_IMAGE" });
       } else if (action === "open_folder") {
-        dispatch({ type: "OPEN_FOLDER" });
+        dispatchRef.current({ type: "OPEN_FOLDER" });
       } else if (action === "rescan") {
-        dispatch({ type: "RESCAN" });
+        dispatchRef.current({ type: "RESCAN" });
       } else if (action === "fix_batches") {
-        dispatch({ type: "FIX_BATCHES" });
+        dispatchRef.current({ type: "FIX_BATCHES" });
       } else if (action === "random_any") {
-        dispatch({ type: "RANDOM_ANY" });
+        dispatchRef.current({ type: "RANDOM_ANY" });
       } else if (action === "slideshow") {
-        dispatch({ type: "TOGGLE_SLIDESHOW", acrossGroups: false });
+        dispatchRef.current({ type: "TOGGLE_SLIDESHOW", acrossGroups: false });
       } else if (action === "slideshow_any") {
-        dispatch({ type: "TOGGLE_SLIDESHOW", acrossGroups: true });
+        dispatchRef.current({ type: "TOGGLE_SLIDESHOW", acrossGroups: true });
       } else if (action === "mark_group_read") {
-        dispatch({ type: "MARK_GROUP_READ" });
+        dispatchRef.current({ type: "MARK_GROUP_READ" });
       } else if (action === "mark_group_unread") {
-        dispatch({ type: "MARK_GROUP_UNREAD" });
+        dispatchRef.current({ type: "MARK_GROUP_UNREAD" });
       } else if (action === "score_up") {
-        dispatch({ type: "SCORE_UP" });
+        dispatchRef.current({ type: "SCORE_UP" });
       } else if (action === "score_down") {
-        dispatch({ type: "SCORE_DOWN" });
+        dispatchRef.current({ type: "SCORE_DOWN" });
       } else if (action === "delete_image") {
-        dispatch({ type: "DELETE_IMAGE" });
+        dispatchRef.current({ type: "DELETE_IMAGE" });
       } else if (action === "delete_group") {
-        dispatch({ type: "DELETE_GROUP" });
+        dispatchRef.current({ type: "DELETE_GROUP" });
       } else if (action === "start_ranking") {
-        dispatch({ type: "START_RANKING" });
+        dispatchRef.current({ type: "START_RANKING" });
       } else if (action === "start_sequential_ranking") {
-        dispatch({ type: "START_SEQUENTIAL_RANKING" });
+        dispatchRef.current({ type: "START_SEQUENTIAL_RANKING" });
       } else if (action === "fullscreen") {
-        dispatch({ type: "TOGGLE_FULLSCREEN" });
+        dispatchRef.current({ type: "TOGGLE_FULLSCREEN" });
       }
     });
     return () => {
       void unlistenPromise.then((unlisten) => unlisten());
     };
-  }, [dispatch]);
+  }, []);
 }
