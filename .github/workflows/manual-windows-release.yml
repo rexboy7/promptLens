@@ -1,0 +1,130 @@
+name: Manual Windows Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump type"
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      create_release:
+        description: "Create GitHub release"
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Bump version files
+        id: bump
+        shell: bash
+        run: |
+          node <<'EOF'
+          const fs = require("node:fs");
+
+          const bumpType = process.env.BUMP_TYPE;
+          const inc = (version, type) => {
+            const parts = version.split(".").map((x) => parseInt(x, 10));
+            if (parts.length !== 3 || parts.some((x) => Number.isNaN(x))) {
+              throw new Error(`Invalid semver: ${version}`);
+            }
+            if (type === "major") return `${parts[0] + 1}.0.0`;
+            if (type === "minor") return `${parts[0]}.${parts[1] + 1}.0`;
+            return `${parts[0]}.${parts[1]}.${parts[2] + 1}`;
+          };
+
+          const pkgPath = "package.json";
+          const tauriConfPath = "src-tauri/tauri.conf.json";
+          const cargoTomlPath = "src-tauri/Cargo.toml";
+
+          const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+          const nextVersion = inc(pkg.version, bumpType);
+          pkg.version = nextVersion;
+          fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+
+          const tauriConf = JSON.parse(fs.readFileSync(tauriConfPath, "utf8"));
+          tauriConf.version = nextVersion;
+          fs.writeFileSync(tauriConfPath, JSON.stringify(tauriConf, null, 2) + "\n");
+
+          const cargoToml = fs.readFileSync(cargoTomlPath, "utf8");
+          const nextCargo = cargoToml.replace(
+            /(^version\s*=\s*")[^"]+(")/m,
+            `$1${nextVersion}$2`
+          );
+          if (cargoToml === nextCargo) {
+            throw new Error("Failed to update src-tauri/Cargo.toml version");
+          }
+          fs.writeFileSync(cargoTomlPath, nextCargo);
+
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${nextVersion}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `tag=v${nextVersion}\n`);
+          EOF
+        env:
+          BUMP_TYPE: ${{ inputs.bump }}
+
+      - name: Build frontend
+        run: pnpm build
+
+      - name: Build Windows bundles
+        run: pnpm tauri build
+
+      - name: Commit and tag release
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml
+          git commit -m "chore(release): v${{ steps.bump.outputs.version }}"
+          git tag ${{ steps.bump.outputs.tag }}
+          git push origin HEAD
+          git push origin ${{ steps.bump.outputs.tag }}
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-bundle-${{ steps.bump.outputs.tag }}
+          path: |
+            src-tauri/target/release/bundle/msi/*
+            src-tauri/target/release/bundle/nsis/*
+          if-no-files-found: warn
+
+      - name: Create GitHub release
+        if: ${{ inputs.create_release }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.bump.outputs.tag }}
+          name: ${{ steps.bump.outputs.tag }}
+          files: |
+            src-tauri/target/release/bundle/msi/*
+            src-tauri/target/release/bundle/nsis/*
