@@ -77,6 +77,27 @@ export async function getRatingPercentiles(
   return invoke<number[]>("get_rating_percentiles", { rootPath, percentiles });
 }
 
+export async function markGroupViewed(
+  rootPath: string,
+  groupId: string
+): Promise<boolean> {
+  return invoke<boolean>("mark_group_viewed", { rootPath, groupId });
+}
+
+export async function markGroupUnviewed(
+  rootPath: string,
+  groupId: string
+): Promise<boolean> {
+  return invoke<boolean>("mark_group_unviewed", { rootPath, groupId });
+}
+
+export async function listViewedGroupIds(
+  rootPath: string,
+  groupIds: string[]
+): Promise<string[]> {
+  return invoke<string[]>("list_viewed_group_ids", { rootPath, groupIds });
+}
+
 export type FixBatchesResult = {
   transitions: number;
   moved: number;

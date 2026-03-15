@@ -49,6 +49,7 @@ pub fn init_db(conn: &Connection) -> Result<(), String> {
             DROP TABLE IF EXISTS prompts_fts;
             DROP TABLE IF EXISTS ratings;
             DROP TABLE IF EXISTS comparisons;
+            DROP TABLE IF EXISTS viewed_groups;
             "#,
         )
         .map_err(|e| e.to_string())?;
@@ -97,6 +98,11 @@ pub fn init_db(conn: &Connection) -> Result<(), String> {
                 winner TEXT NOT NULL,
                 ts INTEGER NOT NULL
             );
+            CREATE TABLE viewed_groups (
+                group_id TEXT PRIMARY KEY,
+                signature TEXT NOT NULL,
+                viewed_at INTEGER NOT NULL
+            );
             "#,
         )
         .map_err(|e| e.to_string())?;
@@ -110,6 +116,17 @@ pub fn init_db(conn: &Connection) -> Result<(), String> {
         )
         .map_err(|e| e.to_string())?;
     }
+
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS viewed_groups (
+            group_id TEXT PRIMARY KEY,
+            signature TEXT NOT NULL,
+            viewed_at INTEGER NOT NULL
+        );
+        "#,
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }

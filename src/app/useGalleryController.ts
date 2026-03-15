@@ -16,8 +16,11 @@ import {
   deleteImage,
   fixBatches,
   getRatings,
+  listViewedGroupIds,
   listGroups,
   listImages,
+  markGroupUnviewed as markGroupUnviewedApi,
+  markGroupViewed as markGroupViewedApi,
   scanDirectory as scanDirectoryApi,
   setGroupRating,
 } from "../data/galleryApi";
@@ -59,10 +62,7 @@ export function useGalleryController() {
     Record<string, RatingItem>
   >({});
   const [ratingsVersion, setRatingsVersion] = useState(0);
-  const [viewedGroupIds, setViewedGroupIds] = useLocalStorageJson<string[]>(
-    "promptlens.viewedGroupIds",
-    []
-  );
+  const [viewedGroupIds, setViewedGroupIds] = useState<string[]>([]);
 
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const slideshowRef = useRef<number | null>(null);
@@ -80,17 +80,31 @@ export function useGalleryController() {
   const viewedIndexSetRef = useRef<Set<number>>(new Set());
   const lastAutoScanRootRef = useRef<string | null>(null);
 
-  const markGroupViewed = (groupId: string) => {
+  const markGroupViewed = async (groupId: string) => {
     setViewedGroupIds((prev) => {
       if (prev[0] === groupId) return prev;
       const next = prev.filter((id) => id !== groupId);
       next.unshift(groupId);
       return next.slice(0, 50);
     });
+    const trimmedRoot = rootPath.trim();
+    if (!trimmedRoot) return;
+    try {
+      await markGroupViewedApi(trimmedRoot, groupId);
+    } catch (error) {
+      console.warn("Failed to mark group viewed", error);
+    }
   };
 
-  const markGroupUnviewed = (groupId: string) => {
+  const markGroupUnviewed = async (groupId: string) => {
     setViewedGroupIds((prev) => prev.filter((id) => id !== groupId));
+    const trimmedRoot = rootPath.trim();
+    if (!trimmedRoot) return;
+    try {
+      await markGroupUnviewedApi(trimmedRoot, groupId);
+    } catch (error) {
+      console.warn("Failed to mark group unviewed", error);
+    }
   };
 
   const adjustGroupRating = async (groupId: string, delta: number) => {
@@ -158,7 +172,7 @@ export function useGalleryController() {
     if (images.length === 0) return;
     viewedIndexSetRef.current.add(selectedImageIndex);
     if (viewedIndexSetRef.current.size / images.length >= 0.6) {
-      markGroupViewed(selectedGroupId);
+      void markGroupViewed(selectedGroupId);
     }
   }, [images.length, selectedGroupId, selectedImageIndex]);
 
@@ -265,12 +279,12 @@ export function useGalleryController() {
         break;
       case "MARK_GROUP_READ":
         if (selectedGroupId) {
-          markGroupViewed(selectedGroupId);
+          void markGroupViewed(selectedGroupId);
         }
         break;
       case "MARK_GROUP_UNREAD":
         if (selectedGroupId) {
-          markGroupUnviewed(selectedGroupId);
+          void markGroupUnviewed(selectedGroupId);
         }
         break;
       case "SCORE_UP":
@@ -565,6 +579,26 @@ export function useGalleryController() {
   useEffect(() => {
     void loadRatings();
   }, [groups]);
+
+  const loadViewedGroups = async () => {
+    if (groups.length === 0 || !rootPath.trim()) {
+      setViewedGroupIds([]);
+      return;
+    }
+    try {
+      const viewed = await listViewedGroupIds(
+        rootPath.trim(),
+        groups.map((group) => group.id)
+      );
+      setViewedGroupIds(viewed);
+    } catch (error) {
+      console.warn("Failed to load viewed groups", error);
+    }
+  };
+
+  useEffect(() => {
+    void loadViewedGroups();
+  }, [groups, rootPath]);
 
   async function startRanking(mode: RankingMode = "sequential") {
     setRankingMode(mode);

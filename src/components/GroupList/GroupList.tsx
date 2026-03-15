@@ -81,7 +81,7 @@ export default function GroupList() {
             type="button"
             className="group-context-item"
             onClick={() => {
-              markGroupViewed(menuGroup.id);
+              void markGroupViewed(menuGroup.id);
               closeMenu();
             }}
           >
@@ -91,7 +91,7 @@ export default function GroupList() {
             type="button"
             className="group-context-item"
             onClick={() => {
-              markGroupUnviewed(menuGroup.id);
+              void markGroupUnviewed(menuGroup.id);
               closeMenu();
             }}
           >
