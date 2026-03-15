@@ -81,7 +81,7 @@ export function useGalleryController() {
   const viewedGroupRef = useRef<string | null>(null);
   const viewedIndexSetRef = useRef<Set<number>>(new Set());
   const lastAutoScanRootRef = useRef<string | null>(null);
-  const migratedViewedLegacyForRootRef = useRef<string | null>(null);
+  const migratedViewedLegacyRef = useRef(false);
 
   const markGroupViewed = async (groupId: string) => {
     setViewedGroupIds((prev) => {
@@ -600,42 +600,42 @@ export function useGalleryController() {
   };
 
   useEffect(() => {
-    void (async () => {
-      const trimmedRoot = rootPath.trim();
-      if (!trimmedRoot) {
-        setViewedGroupIds([]);
-        return;
-      }
+    void loadViewedGroups();
+  }, [groups, rootPath]);
 
-      if (
-        groups.length > 0 &&
-        migratedViewedLegacyForRootRef.current !== trimmedRoot
-      ) {
-        migratedViewedLegacyForRootRef.current = trimmedRoot;
-        const legacyRaw = localStorage.getItem(LEGACY_VIEWED_GROUP_IDS_KEY);
-        if (legacyRaw !== null) {
-          try {
-            const legacyViewed = JSON.parse(legacyRaw) as unknown;
-            if (Array.isArray(legacyViewed)) {
-              const promptGroupIds = legacyViewed.filter(
-                (value): value is string =>
-                  typeof value === "string" && value.startsWith("p:")
-              );
-              for (const groupId of promptGroupIds) {
-                await markGroupViewedApi(trimmedRoot, groupId);
-              }
-            }
-          } catch (error) {
-            console.warn("Failed to migrate legacy viewed groups", error);
-          } finally {
-            localStorage.removeItem(LEGACY_VIEWED_GROUP_IDS_KEY);
+  useEffect(() => {
+    if (migratedViewedLegacyRef.current) return;
+    migratedViewedLegacyRef.current = true;
+    void (async () => {
+      const legacyRaw = localStorage.getItem(LEGACY_VIEWED_GROUP_IDS_KEY);
+      if (legacyRaw === null) return;
+      try {
+        const legacyViewed = JSON.parse(legacyRaw) as unknown;
+        if (!Array.isArray(legacyViewed)) return;
+        const promptGroupIds = legacyViewed.filter(
+          (value): value is string =>
+            typeof value === "string" && value.startsWith("p:")
+        );
+        if (promptGroupIds.length === 0) return;
+        const roots = Array.from(
+          new Set(
+            recentRoots
+              .map((value) => value.trim())
+              .filter((value) => value.length > 0)
+          )
+        );
+        for (const root of roots) {
+          for (const groupId of promptGroupIds) {
+            await markGroupViewedApi(root, groupId);
           }
         }
+      } catch (error) {
+        console.warn("Failed to migrate legacy viewed groups", error);
+      } finally {
+        localStorage.removeItem(LEGACY_VIEWED_GROUP_IDS_KEY);
       }
-
-      await loadViewedGroups();
     })();
-  }, [groups, rootPath]);
+  }, []);
 
   async function startRanking(mode: RankingMode = "sequential") {
     setRankingMode(mode);
