@@ -9,6 +9,7 @@ type KeyboardHandlers = {
 export function useKeyboard({ dispatch, canNavigateImages }: KeyboardHandlers) {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      const isPrimaryModifier = event.metaKey || event.ctrlKey;
       const target = event.target as HTMLElement | null;
       if (
         target &&
@@ -39,11 +40,11 @@ export function useKeyboard({ dispatch, canNavigateImages }: KeyboardHandlers) {
         event.preventDefault();
         dispatch({ type: "PREV_IMAGE" });
       } else if (event.key === "ArrowDown") {
-        if (!event.metaKey) return;
+        if (!isPrimaryModifier) return;
         event.preventDefault();
         dispatch({ type: "NEXT_GROUP" });
       } else if (event.key === "ArrowUp") {
-        if (!event.metaKey) return;
+        if (!isPrimaryModifier) return;
         event.preventDefault();
         dispatch({ type: "PREV_GROUP" });
       } else if (event.key === "Enter") {
@@ -51,16 +52,16 @@ export function useKeyboard({ dispatch, canNavigateImages }: KeyboardHandlers) {
         dispatch({ type: "OPEN_VIEWER" });
       } else if (event.key === "r" || event.key === "R") {
         event.preventDefault();
-        if (event.metaKey) {
+        if (isPrimaryModifier) {
           dispatch({ type: "RANDOM_ANY" });
         } else {
           dispatch({ type: "RANDOM_IMAGE" });
         }
       } else if (event.key === "s" || event.key === "S") {
         event.preventDefault();
-        dispatch({ type: "TOGGLE_SLIDESHOW", acrossGroups: event.metaKey });
+        dispatch({ type: "TOGGLE_SLIDESHOW", acrossGroups: isPrimaryModifier });
       } else if (event.key === "d" || event.key === "D") {
-        if (!event.metaKey) return;
+        if (!isPrimaryModifier) return;
         event.preventDefault();
         if (event.altKey) {
           dispatch({ type: "DELETE_GROUP" });

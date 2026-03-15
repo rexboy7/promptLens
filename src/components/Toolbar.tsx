@@ -16,6 +16,10 @@ import deleteImageIcon from "../assets/toolbar/delete-image.svg";
 import deleteGroupIcon from "../assets/toolbar/delete-group.svg";
 
 export default function Toolbar() {
+  const isMac = navigator.platform.toUpperCase().includes("MAC");
+  const primaryKey = isMac ? "Cmd" : "Ctrl";
+  const secondaryKey = isMac ? "Opt" : "Alt";
+
   const {
     hasImages,
     hasGroups,
@@ -51,7 +55,7 @@ export default function Toolbar() {
           type="button"
           onClick={() => void randomCategoryImage()}
           disabled={!hasGroups}
-          title="Random category + image (⌘R)"
+          title={`Random category + image (${primaryKey}+R)`}
           className="icon-button"
         >
           <img src={diceStackIcon} alt="" aria-hidden="true" />
@@ -69,7 +73,7 @@ export default function Toolbar() {
           type="button"
           onClick={() => toggleSlideshow({ acrossGroups: true })}
           disabled={!hasGroups}
-          title="Slideshow across categories (⌘S)"
+          title={`Slideshow across categories (${primaryKey}+S)`}
           className="icon-button"
         >
           <img src={slideshowAnyIcon} alt="" aria-hidden="true" />
@@ -78,7 +82,7 @@ export default function Toolbar() {
           type="button"
           onClick={goPrevGroup}
           disabled={!hasGroups}
-          title="Previous category (⌘↑)"
+          title={`Previous category (${primaryKey}+↑)`}
           className="icon-button"
         >
           <img src={groupPrevIcon} alt="" aria-hidden="true" />
@@ -87,7 +91,7 @@ export default function Toolbar() {
           type="button"
           onClick={goNextGroup}
           disabled={!hasGroups}
-          title="Next category (⌘↓)"
+          title={`Next category (${primaryKey}+↓)`}
           className="icon-button"
         >
           <img src={groupNextIcon} alt="" aria-hidden="true" />
@@ -143,7 +147,7 @@ export default function Toolbar() {
           type="button"
           onClick={() => void deleteCurrentImage()}
           disabled={!hasImages}
-          title="Delete image (⌘D)"
+          title={`Delete image (${primaryKey}+D)`}
           className="icon-button danger"
         >
           <img src={deleteImageIcon} alt="" aria-hidden="true" />
@@ -152,7 +156,7 @@ export default function Toolbar() {
           type="button"
           onClick={() => void deleteCurrentGroup()}
           disabled={!hasSelectedGroup}
-          title="Delete category (⌘⌥D)"
+          title={`Delete category (${primaryKey}+${secondaryKey}+D)`}
           className="icon-button danger"
         >
           <img src={deleteGroupIcon} alt="" aria-hidden="true" />
@@ -162,13 +166,13 @@ export default function Toolbar() {
         <summary>Shortcuts</summary>
         <ul>
           <li>R — random image in category</li>
-          <li>⌘R — random category + image</li>
+          <li>{primaryKey}+R — random category + image</li>
           <li>S — slideshow in category</li>
-          <li>⌘S — slideshow across categories</li>
-          <li>⌘D — delete image</li>
-          <li>⌘⌥D — delete category</li>
+          <li>{primaryKey}+S — slideshow across categories</li>
+          <li>{primaryKey}+D — delete image</li>
+          <li>{primaryKey}+{secondaryKey}+D — delete category</li>
           <li>F — toggle fullscreen</li>
-          <li>⌘↑ / ⌘↓ — previous/next category</li>
+          <li>{primaryKey}+↑ / {primaryKey}+↓ — previous/next category</li>
           <li>Enter — open selected image</li>
           <li>Esc — close viewer and stop slideshow</li>
         </ul>

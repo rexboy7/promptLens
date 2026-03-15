@@ -13,7 +13,7 @@ export default function RootSelector() {
       <input
         value={rootPath}
         onChange={(event) => handleRootChange(event.currentTarget.value)}
-        placeholder="Root folder path (e.g. /Users/me/Images)"
+        placeholder="Root folder path (e.g. C:\\Images or /home/me/images)"
         list="recent-roots"
       />
       {recentRoots.length > 0 && (
