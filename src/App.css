@@ -71,6 +71,17 @@ body {
   color: #6a5d54;
 }
 
+.status-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.scan-progress {
+  width: 180px;
+  height: 10px;
+}
+
 .mode-toggle {
   display: inline-flex;
   border-radius: 999px;

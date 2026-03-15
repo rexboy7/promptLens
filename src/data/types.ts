@@ -23,6 +23,21 @@ export type ScanResult = {
   total_batches: number;
 };
 
+export type ScanStartResponse = {
+  scan_id: string;
+};
+
+export type ScanProgressEvent = {
+  scan_id: string;
+  stage: "counting" | "indexing" | "extracting_prompts" | "done" | "error";
+  message: string;
+  processed: number;
+  total: number;
+  done: boolean;
+  success: boolean;
+  result?: ScanResult | null;
+};
+
 export type RatingItem = {
   group_id: string;
   rating: number;

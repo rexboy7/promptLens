@@ -1,11 +1,13 @@
 use crate::db::{init_db, open_db};
 use crate::prompts::extract_prompts_for_unparsed;
-use crate::types::ScanResult;
+use crate::types::{ScanProgressEvent, ScanResult, ScanStartResponse};
 use rusqlite::{params, Connection};
+use std::sync::{Arc, Mutex};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
-use tauri::AppHandle;
+use std::time::{SystemTime, UNIX_EPOCH};
+use tauri::{AppHandle, Emitter, State};
 use walkdir::WalkDir;
 
 #[derive(Clone)]
@@ -24,6 +26,41 @@ struct DbImageRow {
     seed: i64,
     mtime: i64,
     prompt_id: Option<i64>,
+}
+
+#[derive(Clone)]
+pub struct ScanManager {
+    active_scan_id: Arc<Mutex<Option<String>>>,
+}
+
+impl Default for ScanManager {
+    fn default() -> Self {
+        Self {
+            active_scan_id: Arc::new(Mutex::new(None)),
+        }
+    }
+}
+
+impl ScanManager {
+    fn try_start(&self, scan_id: String) -> Result<(), String> {
+        let mut guard = self
+            .active_scan_id
+            .lock()
+            .map_err(|_| "Scan state lock poisoned".to_string())?;
+        if guard.is_some() {
+            return Err("A scan is already running".to_string());
+        }
+        *guard = Some(scan_id);
+        Ok(())
+    }
+
+    fn finish(&self, scan_id: &str) {
+        if let Ok(mut guard) = self.active_scan_id.lock() {
+            if guard.as_deref() == Some(scan_id) {
+                *guard = None;
+            }
+        }
+    }
 }
 
 fn is_date_segment(segment: &str) -> bool {
@@ -59,12 +96,38 @@ fn parse_filename(path: &Path) -> Option<(i64, i64)> {
     Some((serial, seed))
 }
 
-fn build_index(conn: &mut Connection, root_path: &str) -> Result<ScanResult, String> {
+fn count_files(root_path: &str) -> usize {
+    WalkDir::new(root_path)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_file())
+        .count()
+}
+
+fn emit_scan_progress(app: &AppHandle, progress: ScanProgressEvent) {
+    let _ = app.emit("scan-progress", progress);
+}
+
+fn build_index<F>(
+    conn: &mut Connection,
+    root_path: &str,
+    total_files: usize,
+    on_progress: &mut F,
+) -> Result<ScanResult, String>
+where
+    F: FnMut(usize, usize),
+{
     let mut items_by_path: HashMap<String, ImageMeta> = HashMap::new();
     let mut items_by_date: HashMap<String, Vec<ImageMeta>> = HashMap::new();
+    let mut processed_files = 0usize;
+
     for entry in WalkDir::new(root_path).into_iter().filter_map(Result::ok) {
         if !entry.file_type().is_file() {
             continue;
+        }
+        processed_files += 1;
+        if processed_files % 500 == 0 || processed_files == total_files {
+            on_progress(processed_files, total_files);
         }
         let path = entry.path();
         if let Some((serial, seed)) = parse_filename(path) {
@@ -231,11 +294,166 @@ fn build_index(conn: &mut Connection, root_path: &str) -> Result<ScanResult, Str
     })
 }
 
+fn run_scan(app: AppHandle, root_path: String, scan_id: String) {
+    emit_scan_progress(
+        &app,
+        ScanProgressEvent {
+            scan_id: scan_id.clone(),
+            stage: "counting".to_string(),
+            message: "Counting files...".to_string(),
+            processed: 0,
+            total: 0,
+            done: false,
+            success: false,
+            result: None,
+        },
+    );
+
+    let total_files = count_files(&root_path);
+    emit_scan_progress(
+        &app,
+        ScanProgressEvent {
+            scan_id: scan_id.clone(),
+            stage: "indexing".to_string(),
+            message: "Indexing files...".to_string(),
+            processed: 0,
+            total: total_files,
+            done: false,
+            success: false,
+            result: None,
+        },
+    );
+
+    let scan_result = (|| -> Result<ScanResult, String> {
+        let mut conn = open_db(&app, &root_path)?;
+        init_db(&conn)?;
+        let mut report = |processed: usize, total: usize| {
+            emit_scan_progress(
+                &app,
+                ScanProgressEvent {
+                    scan_id: scan_id.clone(),
+                    stage: "indexing".to_string(),
+                    message: "Indexing files...".to_string(),
+                    processed,
+                    total,
+                    done: false,
+                    success: false,
+                    result: None,
+                },
+            );
+        };
+        let result = build_index(&mut conn, &root_path, total_files, &mut report)?;
+        emit_scan_progress(
+            &app,
+            ScanProgressEvent {
+                scan_id: scan_id.clone(),
+                stage: "extracting_prompts".to_string(),
+                message: "Extracting prompts...".to_string(),
+                processed: 0,
+                total: 0,
+                done: false,
+                success: false,
+                result: None,
+            },
+        );
+        extract_prompts_for_unparsed(&mut conn)?;
+        Ok(result)
+    })();
+
+    match scan_result {
+        Ok(result) => emit_scan_progress(
+            &app,
+            ScanProgressEvent {
+                scan_id,
+                stage: "done".to_string(),
+                message: format!(
+                    "Indexed {} images in {} groups.",
+                    result.total_images, result.total_batches
+                ),
+                processed: total_files,
+                total: total_files,
+                done: true,
+                success: true,
+                result: Some(result),
+            },
+        ),
+        Err(error) => emit_scan_progress(
+            &app,
+            ScanProgressEvent {
+                scan_id,
+                stage: "error".to_string(),
+                message: format!("Scan failed: {}", error),
+                processed: 0,
+                total: total_files,
+                done: true,
+                success: false,
+                result: None,
+            },
+        ),
+    }
+}
+
 #[tauri::command]
 pub fn scan_directory(app: AppHandle, root_path: String) -> Result<ScanResult, String> {
     let mut conn = open_db(&app, &root_path)?;
     init_db(&conn)?;
-    let result = build_index(&mut conn, &root_path)?;
+    let mut noop_progress = |_: usize, _: usize| {};
+    let result = build_index(&mut conn, &root_path, 0, &mut noop_progress)?;
     extract_prompts_for_unparsed(&mut conn)?;
     Ok(result)
+}
+
+#[tauri::command]
+pub fn start_scan(
+    app: AppHandle,
+    root_path: String,
+    scan_manager: State<ScanManager>,
+) -> Result<ScanStartResponse, String> {
+    let root_path = root_path.trim().to_string();
+    if root_path.is_empty() {
+        return Err("Please enter a root folder path.".to_string());
+    }
+
+    let scan_id = format!(
+        "{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| e.to_string())?
+            .as_millis()
+    );
+    scan_manager.try_start(scan_id.clone())?;
+
+    let app_clone = app.clone();
+    let manager = scan_manager.inner().clone();
+    let scan_id_for_task = scan_id.clone();
+    let scan_id_for_error = scan_id.clone();
+    tauri::async_runtime::spawn(async move {
+        let run_result = tauri::async_runtime::spawn_blocking(move || {
+            run_scan(app_clone, root_path, scan_id_for_task.clone());
+            scan_id_for_task
+        })
+        .await;
+
+        match run_result {
+            Ok(done_id) => manager.finish(&done_id),
+            Err(error) => {
+                manager.finish(&scan_id_for_error);
+                emit_scan_progress(
+                    &app,
+                    ScanProgressEvent {
+                        scan_id: scan_id_for_error,
+                        stage: "error".to_string(),
+                        message: format!("Scan failed: {}", error),
+                        processed: 0,
+                        total: 0,
+                        done: true,
+                        success: false,
+                        result: None,
+                    },
+                );
+            }
+        }
+    });
+
+    Ok(ScanStartResponse { scan_id })
 }

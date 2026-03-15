@@ -4,12 +4,20 @@ import type {
   GroupMode,
   ImageItem,
   RatingItem,
+  ScanProgressEvent,
   ScanResult,
+  ScanStartResponse,
 } from "./types";
 
 export async function scanDirectory(rootPath: string): Promise<ScanResult> {
   return invoke<ScanResult>("scan_directory", { rootPath });
 }
+
+export async function startScan(rootPath: string): Promise<ScanStartResponse> {
+  return invoke<ScanStartResponse>("start_scan", { rootPath });
+}
+
+export type { ScanProgressEvent };
 
 export async function listGroups(params: {
   rootPath: string;

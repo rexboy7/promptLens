@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct ScanResult {
     pub total_images: usize,
     pub total_batches: usize,
@@ -28,4 +28,21 @@ pub struct RatingItem {
     pub group_id: String,
     pub rating: f64,
     pub matches: i64,
+}
+
+#[derive(Clone, Serialize)]
+pub struct ScanStartResponse {
+    pub scan_id: String,
+}
+
+#[derive(Clone, Serialize)]
+pub struct ScanProgressEvent {
+    pub scan_id: String,
+    pub stage: String,
+    pub message: String,
+    pub processed: usize,
+    pub total: usize,
+    pub done: bool,
+    pub success: bool,
+    pub result: Option<ScanResult>,
 }

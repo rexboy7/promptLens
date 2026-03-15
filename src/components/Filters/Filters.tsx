@@ -6,6 +6,7 @@ export default function Filters() {
     dateFilter,
     groupMode,
     status,
+    scanProgress,
     setSearchText,
     setDateFilter,
     setGroupMode,
@@ -58,7 +59,16 @@ export default function Filters() {
           Score
         </button>
       </div>
-      <span className="status">{status}</span>
+      <div className="status-wrap">
+        <span className="status">{status}</span>
+        {scanProgress && !scanProgress.done && (
+          <progress
+            className="scan-progress"
+            value={scanProgress.processed}
+            max={Math.max(1, scanProgress.total)}
+          />
+        )}
+      </div>
     </section>
   );
 }

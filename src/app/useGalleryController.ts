@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { listen } from "@tauri-apps/api/event";
 import { confirm, open } from "@tauri-apps/plugin-dialog";
 import { useKeyboard } from "../hooks/useKeyboard";
 import { useMenuEvents } from "../hooks/useMenuEvents";
@@ -18,10 +19,17 @@ import {
   getRatings,
   listGroups,
   listImages,
-  scanDirectory as scanDirectoryApi,
+  startScan,
   setGroupRating,
 } from "../data/galleryApi";
-import type { Group, GroupMode, ImageItem, RatingItem, RankingMode } from "../data/types";
+import type {
+  Group,
+  GroupMode,
+  ImageItem,
+  RatingItem,
+  RankingMode,
+  ScanProgressEvent,
+} from "../data/types";
 import { useViewedGroups } from "./useViewedGroups";
 import { ShuffleBag } from "../utils/shuffleBag";
 
@@ -48,6 +56,7 @@ export function useGalleryController() {
     useLocalStorageOptionalNumber("promptlens.selectedImageIndex");
   const [viewerOpen, setViewerOpen] = useState(false);
   const [status, setStatus] = useState("");
+  const [scanProgress, setScanProgress] = useState<ScanProgressEvent | null>(null);
   const [recentRoots, setRecentRoots] = useLocalStorageJson<string[]>(
     "promptlens.recentRoots",
     []
@@ -74,6 +83,11 @@ export function useGalleryController() {
   const imageBagRef = useRef<ShuffleBag<ImageItem> | null>(null);
   const imageBagGroupRef = useRef<string | null>(null);
   const lastAutoScanRootRef = useRef<string | null>(null);
+  const activeScanIdRef = useRef<string | null>(null);
+  const activeScanRootRef = useRef<string | null>(null);
+  const refreshGroupsRef = useRef<(nextMode?: GroupMode) => Promise<void>>(
+    async () => {}
+  );
   const { viewedGroupIds, markGroupViewed, markGroupUnviewed } =
     useViewedGroups({
       rootPath,
@@ -280,6 +294,30 @@ export function useGalleryController() {
   useMenuEvents({ dispatch });
 
   useEffect(() => {
+    const unlistenPromise = listen<ScanProgressEvent>("scan-progress", (event) => {
+      const payload = event.payload;
+      if (activeScanIdRef.current && payload.scan_id !== activeScanIdRef.current) {
+        return;
+      }
+      setScanProgress(payload);
+      setStatus(payload.message);
+      if (!payload.done) {
+        return;
+      }
+      const scanRoot = activeScanRootRef.current;
+      activeScanIdRef.current = null;
+      activeScanRootRef.current = null;
+      if (payload.success && scanRoot) {
+        updateRecentRoots(scanRoot);
+        void refreshGroupsRef.current();
+      }
+    });
+    return () => {
+      void unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, [recentRoots]);
+
+  useEffect(() => {
     pendingSelectionRef.current = {
       groupId: selectedGroupId,
       imageIndex: selectedImageIndex,
@@ -355,19 +393,26 @@ export function useGalleryController() {
     }
   }
 
+  useEffect(() => {
+    refreshGroupsRef.current = refreshGroups;
+  }, [refreshGroups]);
+
   async function scanDirectoryAction() {
-    if (!rootPath.trim()) {
+    const trimmed = rootPath.trim();
+    if (!trimmed) {
       setStatus("Please enter a root folder path.");
       return;
     }
-    setStatus("Scanning...");
+    if (activeScanIdRef.current) {
+      setStatus("Scan already running...");
+      return;
+    }
+    setStatus("Starting scan...");
+    setScanProgress(null);
     try {
-      const result = await scanDirectoryApi(rootPath.trim());
-      setStatus(
-        `Indexed ${result.total_images} images in ${result.total_batches} groups.`
-      );
-      updateRecentRoots(rootPath.trim());
-      await refreshGroups();
+      const { scan_id } = await startScan(trimmed);
+      activeScanIdRef.current = scan_id;
+      activeScanRootRef.current = trimmed;
     } catch (error) {
       setStatus(`Scan failed: ${String(error)}`);
     }
@@ -399,14 +444,15 @@ export function useGalleryController() {
 
   async function autoscanRoot(path: string) {
     if (!path.trim()) return;
-    setStatus("Scanning...");
+    if (activeScanIdRef.current) {
+      return;
+    }
+    setStatus("Starting scan...");
+    setScanProgress(null);
     try {
-      const scanResult = await scanDirectoryApi(path);
-      setStatus(
-        `Indexed ${scanResult.total_images} images in ${scanResult.total_batches} groups.`
-      );
-      updateRecentRoots(path);
-      await refreshGroups();
+      const { scan_id } = await startScan(path);
+      activeScanIdRef.current = scan_id;
+      activeScanRootRef.current = path;
     } catch (error) {
       setStatus(`Scan failed: ${String(error)}`);
     }
@@ -568,6 +614,7 @@ export function useGalleryController() {
     viewerOpen,
     setViewerOpen,
     status,
+    scanProgress,
     recentRoots,
     viewerRef,
     isFullscreen,
