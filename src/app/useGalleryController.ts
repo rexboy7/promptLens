@@ -65,6 +65,7 @@ export function useGalleryController() {
   >({});
   const [ratingsVersion, setRatingsVersion] = useState(0);
   const [viewedGroupIds, setViewedGroupIds] = useState<string[]>([]);
+  const [viewedRefreshVersion, setViewedRefreshVersion] = useState(0);
 
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const slideshowRef = useRef<number | null>(null);
@@ -601,7 +602,7 @@ export function useGalleryController() {
 
   useEffect(() => {
     void loadViewedGroups();
-  }, [groups, rootPath]);
+  }, [groups, rootPath, viewedRefreshVersion]);
 
   useEffect(() => {
     if (migratedViewedLegacyRef.current) return;
@@ -633,6 +634,7 @@ export function useGalleryController() {
         console.warn("Failed to migrate legacy viewed groups", error);
       } finally {
         localStorage.removeItem(LEGACY_VIEWED_GROUP_IDS_KEY);
+        setViewedRefreshVersion((value) => value + 1);
       }
     })();
   }, []);
