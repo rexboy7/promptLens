@@ -59,6 +59,10 @@ describe("gallery interaction flow", () => {
         groups.find((group) => group.id === galleryState.selectedGroupId) ?? null;
     };
 
+    const markGroupsViewed = vi.fn(async () => true);
+    const markGroupsUnviewed = vi.fn(async () => true);
+    const adjustGroupsRating = vi.fn(async () => true);
+
     galleryState = {
       groups,
       groupPage: 0,
@@ -85,9 +89,9 @@ describe("gallery interaction flow", () => {
       },
       ratingByGroupId: {},
       viewedGroupIds: [],
-      markGroupsViewed: async () => true,
-      markGroupsUnviewed: async () => true,
-      adjustGroupsRating: async () => {},
+      markGroupsViewed,
+      markGroupsUnviewed,
+      adjustGroupsRating,
       markGroupViewed: async () => true,
       markGroupUnviewed: async () => true,
       adjustGroupRating: async () => {},
@@ -245,5 +249,27 @@ describe("gallery interaction flow", () => {
     rerender(<GroupList />);
 
     expect(galleryState.selectedGroupIds).toEqual(["p:1", "p:2"]);
+  });
+
+  it("shows bulk context actions for selected groups and dispatches viewed action", () => {
+    const { rerender } = render(<GroupList />);
+
+    const secondGroupButton = screen.getByText("ID: p:2").closest("button");
+    expect(secondGroupButton).not.toBeNull();
+    fireEvent.click(secondGroupButton as HTMLButtonElement, { ctrlKey: true });
+    rerender(<GroupList />);
+
+    fireEvent.contextMenu(secondGroupButton as HTMLButtonElement, {
+      clientX: 100,
+      clientY: 100,
+    });
+    rerender(<GroupList />);
+
+    const markViewedButton = screen.getByRole("button", {
+      name: "Mark 2 selected viewed",
+    });
+    fireEvent.click(markViewedButton);
+
+    expect(galleryState.markGroupsViewed).toHaveBeenCalledWith("p:2");
   });
 });
