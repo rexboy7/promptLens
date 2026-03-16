@@ -41,6 +41,24 @@ struct ScanFolderMetrics {
     dir_mtime: i64,
 }
 
+struct FsSnapshot {
+    items_by_path: HashMap<String, ImageMeta>,
+    items_by_date: HashMap<String, Vec<ImageMeta>>,
+    encountered_date_folders: HashSet<String>,
+    skipped_date_folders: HashSet<String>,
+    scan_folder_metrics: HashMap<String, ScanFolderMetrics>,
+}
+
+struct Delta {
+    dates_changed: HashSet<String>,
+    prompt_by_path: HashMap<String, Option<i64>>,
+}
+
+struct BuildIndexOutcome {
+    result: ScanResult,
+    scanned_files: usize,
+}
+
 #[derive(Clone)]
 pub struct ScanManager {
     active_scan_id: Arc<Mutex<Option<String>>>,
@@ -135,49 +153,43 @@ fn unix_mtime(path: &Path) -> i64 {
     }
 }
 
-fn count_files(root_path: &str) -> usize {
-    WalkDir::new(root_path)
-        .into_iter()
-        .filter_map(Result::ok)
-        .filter(|entry| entry.file_type().is_file())
-        .count()
-}
-
 fn emit_scan_progress(app: &AppHandle, progress: ScanProgressEvent) {
     let _ = app.emit("scan-progress", progress);
 }
 
-fn build_index<F>(
-    conn: &mut Connection,
+fn load_known_scan_folders(conn: &Connection) -> Result<HashMap<String, ScanFolderState>, String> {
+    let mut known_scan_folders: HashMap<String, ScanFolderState> = HashMap::new();
+    let mut stmt = conn
+        .prepare("SELECT folder_path, dir_mtime FROM scan_folders")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                ScanFolderState {
+                    dir_mtime: row.get(1)?,
+                },
+            ))
+        })
+        .map_err(|e| e.to_string())?;
+    for row in rows {
+        let (folder_path, state) = row.map_err(|e| e.to_string())?;
+        known_scan_folders.insert(folder_path, state);
+    }
+    Ok(known_scan_folders)
+}
+
+fn collect_fs_snapshot<F>(
     root_path: &str,
-    total_files: usize,
+    known_scan_folders: &HashMap<String, ScanFolderState>,
+    indexed_folders: &HashSet<String>,
     on_progress: &mut F,
-) -> Result<ScanResult, String>
+) -> FsSnapshot
 where
-    F: FnMut(usize, usize),
+    F: FnMut(usize),
 {
     let mut items_by_path: HashMap<String, ImageMeta> = HashMap::new();
     let mut items_by_date: HashMap<String, Vec<ImageMeta>> = HashMap::new();
-    let mut known_scan_folders: HashMap<String, ScanFolderState> = HashMap::new();
-    {
-        let mut stmt = conn
-            .prepare("SELECT folder_path, dir_mtime FROM scan_folders")
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map([], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    ScanFolderState {
-                        dir_mtime: row.get(1)?,
-                    },
-                ))
-            })
-            .map_err(|e| e.to_string())?;
-        for row in rows {
-            let (folder_path, state) = row.map_err(|e| e.to_string())?;
-            known_scan_folders.insert(folder_path, state);
-        }
-    }
     let mut encountered_date_folders: HashSet<String> = HashSet::new();
     let mut skipped_date_folders: HashSet<String> = HashSet::new();
     let mut scan_folder_metrics: HashMap<String, ScanFolderMetrics> = HashMap::new();
@@ -197,7 +209,9 @@ where
                     let dir_mtime = unix_mtime(path);
                     encountered_date_folders.insert(folder_key.clone());
                     if let Some(previous) = known_scan_folders.get(&folder_key) {
-                        if previous.dir_mtime == dir_mtime {
+                        if previous.dir_mtime == dir_mtime
+                            && indexed_folders.contains(&folder_key)
+                        {
                             skipped_date_folders.insert(folder_key);
                             walker.skip_current_dir();
                             continue;
@@ -217,8 +231,8 @@ where
             continue;
         }
         processed_files += 1;
-        if processed_files % 500 == 0 || processed_files == total_files {
-            on_progress(processed_files, total_files);
+        if processed_files % 500 == 0 {
+            on_progress(processed_files);
         }
         let folder_key = extract_date_folder_path(path)
             .map(|folder| folder.to_string_lossy().to_string());
@@ -267,35 +281,59 @@ where
             }
         }
     }
+    on_progress(processed_files);
 
+    FsSnapshot {
+        items_by_path,
+        items_by_date,
+        encountered_date_folders,
+        skipped_date_folders,
+        scan_folder_metrics,
+    }
+}
+
+fn load_db_items(conn: &Connection) -> Result<HashMap<String, DbImageRow>, String> {
     let mut db_items: HashMap<String, DbImageRow> = HashMap::new();
-    {
-        let mut stmt = conn
-            .prepare("SELECT path, date, serial, seed, mtime, prompt_id FROM images")
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map([], |row| {
-                Ok(DbImageRow {
-                    path: row.get(0)?,
-                    date: row.get(1)?,
-                    serial: row.get(2)?,
-                    seed: row.get(3)?,
-                    mtime: row.get(4)?,
-                    prompt_id: row.get(5)?,
-                })
+    let mut stmt = conn
+        .prepare("SELECT path, date, serial, seed, mtime, prompt_id FROM images")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(DbImageRow {
+                path: row.get(0)?,
+                date: row.get(1)?,
+                serial: row.get(2)?,
+                seed: row.get(3)?,
+                mtime: row.get(4)?,
+                prompt_id: row.get(5)?,
             })
-            .map_err(|e| e.to_string())?;
-        for row in rows {
-            let item = row.map_err(|e| e.to_string())?;
-            db_items.insert(item.path.clone(), item);
+        })
+        .map_err(|e| e.to_string())?;
+    for row in rows {
+        let item = row.map_err(|e| e.to_string())?;
+        db_items.insert(item.path.clone(), item);
+    }
+    Ok(db_items)
+}
+
+fn extract_indexed_folders(db_items: &HashMap<String, DbImageRow>) -> HashSet<String> {
+    let mut indexed_folders = HashSet::new();
+    for db_item in db_items.values() {
+        if let Some(folder) = extract_date_folder_path(Path::new(&db_item.path)) {
+            indexed_folders.insert(folder.to_string_lossy().to_string());
         }
     }
+    indexed_folders
+}
 
-    // For folders skipped in this run, reuse existing DB rows as current snapshot
-    // so unchanged data is not treated as deleted.
+fn merge_skipped_folder_db_rows(snapshot: &mut FsSnapshot, db_items: &HashMap<String, DbImageRow>) {
     for db_item in db_items.values() {
         let is_in_skipped_folder = extract_date_folder_path(Path::new(&db_item.path))
-            .map(|folder| skipped_date_folders.contains(&folder.to_string_lossy().to_string()))
+            .map(|folder| {
+                snapshot
+                    .skipped_date_folders
+                    .contains(&folder.to_string_lossy().to_string())
+            })
             .unwrap_or(false);
         if !is_in_skipped_folder {
             continue;
@@ -307,13 +345,22 @@ where
             seed: db_item.seed,
             mtime: db_item.mtime,
         };
-        items_by_path.insert(db_item.path.clone(), meta.clone());
-        items_by_date.entry(db_item.date.clone()).or_default().push(meta);
+        snapshot.items_by_path.insert(db_item.path.clone(), meta.clone());
+        snapshot
+            .items_by_date
+            .entry(db_item.date.clone())
+            .or_default()
+            .push(meta);
     }
+}
 
+fn compute_delta(
+    items_by_path: &HashMap<String, ImageMeta>,
+    db_items: &mut HashMap<String, DbImageRow>,
+) -> Delta {
     let mut dates_changed: HashSet<String> = HashSet::new();
     let mut prompt_by_path: HashMap<String, Option<i64>> = HashMap::new();
-    for (path, item) in &items_by_path {
+    for (path, item) in items_by_path {
         match db_items.remove(path) {
             None => {
                 dates_changed.insert(item.date.clone());
@@ -332,151 +379,202 @@ where
             }
         }
     }
-    for (_, db_item) in db_items {
-        dates_changed.insert(db_item.date);
+    for db_item in db_items.values() {
+        dates_changed.insert(db_item.date.clone());
     }
+    Delta {
+        dates_changed,
+        prompt_by_path,
+    }
+}
 
-    if !dates_changed.is_empty() {
-        let tx = conn.transaction().map_err(|e| e.to_string())?;
-        let mut sorted_dates: Vec<String> = dates_changed.into_iter().collect();
-        sorted_dates.sort();
-        for date in sorted_dates {
-            tx.execute("DELETE FROM images WHERE date = ?1", params![date])
-                .map_err(|e| e.to_string())?;
-            tx.execute("DELETE FROM batches WHERE date = ?1", params![date])
-                .map_err(|e| e.to_string())?;
-            let Some(mut items) = items_by_date.get(&date).cloned() else {
-                continue;
+fn apply_delta(
+    conn: &mut Connection,
+    delta: &Delta,
+    items_by_date: &HashMap<String, Vec<ImageMeta>>,
+) -> Result<(), String> {
+    if delta.dates_changed.is_empty() {
+        return Ok(());
+    }
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let mut sorted_dates: Vec<String> = delta.dates_changed.iter().cloned().collect();
+    sorted_dates.sort();
+    for date in sorted_dates {
+        tx.execute("DELETE FROM images WHERE date = ?1", params![date])
+            .map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM batches WHERE date = ?1", params![date])
+            .map_err(|e| e.to_string())?;
+        let Some(mut items) = items_by_date.get(&date).cloned() else {
+            continue;
+        };
+        items.sort_by(|a, b| a.serial.cmp(&b.serial).then(a.seed.cmp(&b.seed)));
+        let mut current_batch_id: Option<i64> = None;
+        let mut prev_serial: Option<i64> = None;
+        let mut prev_seed: Option<i64> = None;
+        for item in items {
+            let new_sequence = match (prev_serial, prev_seed) {
+                (Some(ps), Some(pd)) => item.serial != ps + 1 || item.seed != pd + 1,
+                _ => true,
             };
-            items.sort_by(|a, b| a.serial.cmp(&b.serial).then(a.seed.cmp(&b.seed)));
-            let mut current_batch_id: Option<i64> = None;
-            let mut prev_serial: Option<i64> = None;
-            let mut prev_seed: Option<i64> = None;
-            for item in items {
-                let new_sequence = match (prev_serial, prev_seed) {
-                    (Some(ps), Some(pd)) => item.serial != ps + 1 || item.seed != pd + 1,
-                    _ => true,
-                };
 
-                if new_sequence || current_batch_id.is_none() {
-                    let batch_id = tx
-                        .execute(
-                            r#"
-                            INSERT INTO batches (
-                                date, first_serial, last_serial, first_seed, last_seed, representative_path
-                            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-                            "#,
-                            params![
-                                item.date,
-                                item.serial,
-                                item.serial,
-                                item.seed,
-                                item.seed,
-                                item.path
-                            ],
-                        )
-                        .map_err(|e| e.to_string())
-                        .and_then(|_| Ok(tx.last_insert_rowid()))?;
-                    current_batch_id = Some(batch_id);
-                } else if let Some(batch_id) = current_batch_id {
-                    tx.execute(
-                        "UPDATE batches SET last_serial = ?1, last_seed = ?2 WHERE id = ?3",
-                        params![item.serial, item.seed, batch_id],
+            if new_sequence || current_batch_id.is_none() {
+                let batch_id = tx
+                    .execute(
+                        r#"
+                        INSERT INTO batches (
+                            date, first_serial, last_serial, first_seed, last_seed, representative_path
+                        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                        "#,
+                        params![
+                            item.date,
+                            item.serial,
+                            item.serial,
+                            item.seed,
+                            item.seed,
+                            item.path
+                        ],
                     )
-                    .map_err(|e| e.to_string())?;
-                }
-
-                let prompt_id = prompt_by_path
-                    .get(&item.path)
-                    .and_then(|value| *value);
+                    .map_err(|e| e.to_string())
+                    .and_then(|_| Ok(tx.last_insert_rowid()))?;
+                current_batch_id = Some(batch_id);
+            } else if let Some(batch_id) = current_batch_id {
                 tx.execute(
-                    r#"
-                    INSERT INTO images (path, date, serial, seed, batch_id, mtime, prompt_id)
-                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-                    "#,
-                    params![
-                        item.path,
-                        item.date,
-                        item.serial,
-                        item.seed,
-                        current_batch_id.unwrap(),
-                        item.mtime,
-                        prompt_id
-                    ],
+                    "UPDATE batches SET last_serial = ?1, last_seed = ?2 WHERE id = ?3",
+                    params![item.serial, item.seed, batch_id],
                 )
                 .map_err(|e| e.to_string())?;
-
-                prev_serial = Some(item.serial);
-                prev_seed = Some(item.seed);
             }
-        }
-        tx.commit().map_err(|e| e.to_string())?;
-    }
 
-    if !scan_folder_metrics.is_empty() || !encountered_date_folders.is_empty() {
-        let scan_ts = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|duration| duration.as_secs() as i64)
-            .unwrap_or(0);
-        let tx = conn.transaction().map_err(|e| e.to_string())?;
-        for (folder_path, metrics) in scan_folder_metrics {
+            let prompt_id = delta.prompt_by_path.get(&item.path).and_then(|value| *value);
             tx.execute(
                 r#"
-                INSERT INTO scan_folders (
-                    folder_path, last_scan_ts, file_count, max_serial, max_seed, dir_mtime, strategy
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-                ON CONFLICT(folder_path) DO UPDATE SET
-                    last_scan_ts = excluded.last_scan_ts,
-                    file_count = excluded.file_count,
-                    max_serial = excluded.max_serial,
-                    max_seed = excluded.max_seed,
-                    dir_mtime = excluded.dir_mtime,
-                    strategy = excluded.strategy
+                INSERT INTO images (path, date, serial, seed, batch_id, mtime, prompt_id)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
                 "#,
                 params![
-                    folder_path,
-                    scan_ts,
-                    metrics.file_count,
-                    metrics.max_serial,
-                    metrics.max_seed,
-                    metrics.dir_mtime,
-                    "full"
+                    item.path,
+                    item.date,
+                    item.serial,
+                    item.seed,
+                    current_batch_id.unwrap(),
+                    item.mtime,
+                    prompt_id
                 ],
             )
             .map_err(|e| e.to_string())?;
-        }
 
-        let mut existing_folders_stmt = tx
-            .prepare("SELECT folder_path FROM scan_folders")
-            .map_err(|e| e.to_string())?;
-        let existing_rows = existing_folders_stmt
-            .query_map([], |row| row.get::<_, String>(0))
-            .map_err(|e| e.to_string())?;
-        let mut to_remove = Vec::new();
-        for row in existing_rows {
-            let folder = row.map_err(|e| e.to_string())?;
-            if !encountered_date_folders.contains(&folder) {
-                to_remove.push(folder);
-            }
+            prev_serial = Some(item.serial);
+            prev_seed = Some(item.seed);
         }
-        drop(existing_folders_stmt);
-        for folder in to_remove {
-            tx.execute("DELETE FROM scan_folders WHERE folder_path = ?1", params![folder])
-                .map_err(|e| e.to_string())?;
-        }
-        tx.commit().map_err(|e| e.to_string())?;
+    }
+    tx.commit().map_err(|e| e.to_string())
+}
+
+fn upsert_scan_folder_state(
+    conn: &mut Connection,
+    scan_folder_metrics: HashMap<String, ScanFolderMetrics>,
+    encountered_date_folders: HashSet<String>,
+) -> Result<(), String> {
+    if scan_folder_metrics.is_empty() && encountered_date_folders.is_empty() {
+        return Ok(());
+    }
+    let scan_ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs() as i64)
+        .unwrap_or(0);
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    for (folder_path, metrics) in scan_folder_metrics {
+        tx.execute(
+            r#"
+            INSERT INTO scan_folders (
+                folder_path, last_scan_ts, file_count, max_serial, max_seed, dir_mtime, strategy
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            ON CONFLICT(folder_path) DO UPDATE SET
+                last_scan_ts = excluded.last_scan_ts,
+                file_count = excluded.file_count,
+                max_serial = excluded.max_serial,
+                max_seed = excluded.max_seed,
+                dir_mtime = excluded.dir_mtime,
+                strategy = excluded.strategy
+            "#,
+            params![
+                folder_path,
+                scan_ts,
+                metrics.file_count,
+                metrics.max_serial,
+                metrics.max_seed,
+                metrics.dir_mtime,
+                "full"
+            ],
+        )
+        .map_err(|e| e.to_string())?;
     }
 
+    let mut existing_folders_stmt = tx
+        .prepare("SELECT folder_path FROM scan_folders")
+        .map_err(|e| e.to_string())?;
+    let existing_rows = existing_folders_stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|e| e.to_string())?;
+    let mut to_remove = Vec::new();
+    for row in existing_rows {
+        let folder = row.map_err(|e| e.to_string())?;
+        if !encountered_date_folders.contains(&folder) {
+            to_remove.push(folder);
+        }
+    }
+    drop(existing_folders_stmt);
+    for folder in to_remove {
+        tx.execute("DELETE FROM scan_folders WHERE folder_path = ?1", params![folder])
+            .map_err(|e| e.to_string())?;
+    }
+    tx.commit().map_err(|e| e.to_string())
+}
+
+fn load_scan_result(conn: &Connection) -> Result<ScanResult, String> {
     let total_images: i64 = conn
         .query_row("SELECT COUNT(*) FROM images", [], |row| row.get(0))
         .map_err(|e| e.to_string())?;
     let total_batches: i64 = conn
         .query_row("SELECT COUNT(*) FROM batches", [], |row| row.get(0))
         .map_err(|e| e.to_string())?;
-
     Ok(ScanResult {
         total_images: total_images as usize,
         total_batches: total_batches as usize,
+    })
+}
+
+fn build_index<F>(
+    conn: &mut Connection,
+    root_path: &str,
+    on_progress: &mut F,
+) -> Result<BuildIndexOutcome, String>
+where
+    F: FnMut(usize),
+{
+    let known_scan_folders = load_known_scan_folders(conn)?;
+    let mut db_items = load_db_items(conn)?;
+    let indexed_folders = extract_indexed_folders(&db_items);
+    let mut scanned_files = 0usize;
+    let mut snapshot = collect_fs_snapshot(
+        root_path,
+        &known_scan_folders,
+        &indexed_folders,
+        &mut |processed| {
+        scanned_files = processed;
+        on_progress(processed);
+    });
+    merge_skipped_folder_db_rows(&mut snapshot, &db_items);
+    let delta = compute_delta(&snapshot.items_by_path, &mut db_items);
+    apply_delta(conn, &delta, &snapshot.items_by_date)?;
+    upsert_scan_folder_state(
+        conn,
+        snapshot.scan_folder_metrics,
+        snapshot.encountered_date_folders,
+    )?;
+    Ok(BuildIndexOutcome {
+        result: load_scan_result(conn)?,
+        scanned_files,
     })
 }
 
@@ -495,7 +593,6 @@ fn run_scan(app: AppHandle, root_path: String, scan_id: String) {
         },
     );
 
-    let total_files = count_files(&root_path);
     emit_scan_progress(
         &app,
         ScanProgressEvent {
@@ -503,17 +600,17 @@ fn run_scan(app: AppHandle, root_path: String, scan_id: String) {
             stage: "indexing".to_string(),
             message: "Indexing files...".to_string(),
             processed: 0,
-            total: total_files,
+            total: 0,
             done: false,
             success: false,
             result: None,
         },
     );
 
-    let scan_result = (|| -> Result<ScanResult, String> {
+    let scan_result = (|| -> Result<BuildIndexOutcome, String> {
         let mut conn = open_db(&app, &root_path)?;
         init_db(&conn)?;
-        let mut report = |processed: usize, total: usize| {
+        let mut report = |processed: usize| {
             emit_scan_progress(
                 &app,
                 ScanProgressEvent {
@@ -521,14 +618,14 @@ fn run_scan(app: AppHandle, root_path: String, scan_id: String) {
                     stage: "indexing".to_string(),
                     message: "Indexing files...".to_string(),
                     processed,
-                    total,
+                    total: 0,
                     done: false,
                     success: false,
                     result: None,
                 },
             );
         };
-        let result = build_index(&mut conn, &root_path, total_files, &mut report)?;
+        let outcome = build_index(&mut conn, &root_path, &mut report)?;
         emit_scan_progress(
             &app,
             ScanProgressEvent {
@@ -543,24 +640,24 @@ fn run_scan(app: AppHandle, root_path: String, scan_id: String) {
             },
         );
         extract_prompts_for_unparsed(&mut conn)?;
-        Ok(result)
+        Ok(outcome)
     })();
 
     match scan_result {
-        Ok(result) => emit_scan_progress(
+        Ok(outcome) => emit_scan_progress(
             &app,
             ScanProgressEvent {
                 scan_id,
                 stage: "done".to_string(),
                 message: format!(
                     "Indexed {} images in {} groups.",
-                    result.total_images, result.total_batches
+                    outcome.result.total_images, outcome.result.total_batches
                 ),
-                processed: total_files,
-                total: total_files,
+                processed: outcome.scanned_files,
+                total: outcome.scanned_files,
                 done: true,
                 success: true,
-                result: Some(result),
+                result: Some(outcome.result),
             },
         ),
         Err(error) => emit_scan_progress(
@@ -570,7 +667,7 @@ fn run_scan(app: AppHandle, root_path: String, scan_id: String) {
                 stage: "error".to_string(),
                 message: format!("Scan failed: {}", error),
                 processed: 0,
-                total: total_files,
+                total: 0,
                 done: true,
                 success: false,
                 result: None,
@@ -583,10 +680,10 @@ fn run_scan(app: AppHandle, root_path: String, scan_id: String) {
 pub fn scan_directory(app: AppHandle, root_path: String) -> Result<ScanResult, String> {
     let mut conn = open_db(&app, &root_path)?;
     init_db(&conn)?;
-    let mut noop_progress = |_: usize, _: usize| {};
-    let result = build_index(&mut conn, &root_path, 0, &mut noop_progress)?;
+    let mut noop_progress = |_: usize| {};
+    let outcome = build_index(&mut conn, &root_path, &mut noop_progress)?;
     extract_prompts_for_unparsed(&mut conn)?;
-    Ok(result)
+    Ok(outcome.result)
 }
 
 #[tauri::command]
@@ -714,15 +811,12 @@ mod tests {
 
         let mut conn = Connection::open_in_memory().expect("failed to open sqlite in-memory db");
         init_db(&conn).expect("failed to initialize db");
-        let mut no_progress = |_: usize, _: usize| {};
+        let mut no_progress = |_: usize| {};
 
-        let result = build_index(
-            &mut conn,
-            root.to_str().expect("non-utf8 temp path"),
-            3,
-            &mut no_progress,
-        )
+        let outcome =
+            build_index(&mut conn, root.to_str().expect("non-utf8 temp path"), &mut no_progress)
         .expect("build_index failed");
+        let result = outcome.result;
 
         assert_eq!(result.total_images, 3);
         assert_eq!(result.total_batches, 2);
@@ -757,7 +851,7 @@ mod tests {
     }
 
     #[test]
-    fn build_index_lazy_skips_unchanged_folder_without_threshold_gate() {
+    fn build_index_does_not_skip_without_indexed_rows_for_folder() {
         let root = create_test_root();
         let date_dir = root.join("images").join("2026-03-16");
         touch_file(&date_dir.join("00001-100.png"));
@@ -780,13 +874,8 @@ mod tests {
         )
         .expect("failed to seed scan_folders");
 
-        let mut no_progress = |_: usize, _: usize| {};
-        build_index(
-            &mut conn,
-            root.to_str().expect("non-utf8 temp path"),
-            2,
-            &mut no_progress,
-        )
+        let mut no_progress = |_: usize| {};
+        build_index(&mut conn, root.to_str().expect("non-utf8 temp path"), &mut no_progress)
         .expect("build_index failed");
 
         let updated_file_count: i64 = conn
@@ -796,7 +885,7 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("failed to query updated scan_folders row");
-        assert_eq!(updated_file_count, 999);
+        assert_eq!(updated_file_count, 2);
 
         fs::remove_dir_all(root).expect("failed to remove temp test root");
     }
@@ -811,13 +900,8 @@ mod tests {
         let mut conn = Connection::open_in_memory().expect("failed to open sqlite in-memory db");
         init_db(&conn).expect("failed to initialize db");
 
-        let mut no_progress = |_: usize, _: usize| {};
-        build_index(
-            &mut conn,
-            root.to_str().expect("non-utf8 temp path"),
-            2,
-            &mut no_progress,
-        )
+        let mut no_progress = |_: usize| {};
+        build_index(&mut conn, root.to_str().expect("non-utf8 temp path"), &mut no_progress)
         .expect("initial build_index failed");
 
         let first_count: i64 = conn
@@ -825,12 +909,7 @@ mod tests {
             .expect("failed to query first image count");
         assert_eq!(first_count, 2);
 
-        build_index(
-            &mut conn,
-            root.to_str().expect("non-utf8 temp path"),
-            2,
-            &mut no_progress,
-        )
+        build_index(&mut conn, root.to_str().expect("non-utf8 temp path"), &mut no_progress)
         .expect("second build_index failed");
 
         let second_count: i64 = conn
