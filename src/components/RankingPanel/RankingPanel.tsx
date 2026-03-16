@@ -220,10 +220,27 @@ export default function RankingPanel() {
   };
 
   const ratingPercentiles = [0.1, 0.3, 0.5, 0.7, 0.9];
-  const ratingFallback = (score: number) => 1000 + (score - 3) * 40;
+  const ratingFallback = (score: number) => {
+    const clamped = Math.max(1, Math.min(5, Math.round(score)));
+    const fallbackByScore = [900, 950, 1000, 1050, 1100];
+    return fallbackByScore[clamped - 1];
+  };
+  const tightenPercentileRatings = (values: number[]) => {
+    if (values.length !== ratingPercentiles.length) return values;
+    const adjusted = [...values];
+    const middle = 2;
+    for (let i = middle - 1; i >= 0; i -= 1) {
+      adjusted[i] = Math.min(adjusted[i], adjusted[i + 1] - 50);
+    }
+    for (let i = middle + 1; i < adjusted.length; i += 1) {
+      adjusted[i] = Math.max(adjusted[i], adjusted[i - 1] + 50);
+    }
+    return adjusted;
+  };
   const ratingAtIndex = (values: number[], index: number) => {
     if (values.length === 0) return 1000;
-    return values[Math.min(values.length - 1, Math.max(0, index))];
+    const tightened = tightenPercentileRatings(values);
+    return tightened[Math.min(tightened.length - 1, Math.max(0, index))];
   };
 
   async function buildRankingPair(groups: Group[]) {
