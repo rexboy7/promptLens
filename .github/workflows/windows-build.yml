@@ -28,6 +28,11 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
@@ -35,4 +40,4 @@ jobs:
         run: pnpm build
 
       - name: Check Tauri backend (Windows)
-        run: cargo check --manifest-path src-tauri/Cargo.toml
+        run: cargo check --locked --manifest-path src-tauri/Cargo.toml
