@@ -133,16 +133,15 @@ export function useGalleryController() {
     setStoredSelectedGroupId(next.activeId);
   };
 
-  const resolveActionGroupIds = (anchorGroupId?: string): string[] => {
-    if (
-      anchorGroupId &&
-      selectedGroupIds.includes(anchorGroupId) &&
-      selectedGroupIds.length > 0
-    ) {
+  const resolveTargetGroupIds = (
+    options?: { anchor?: string }
+  ): string[] => {
+    const anchor = options?.anchor;
+    if (anchor && selectedGroupIds.includes(anchor) && selectedGroupIds.length > 0) {
       return selectedGroupIds;
     }
-    if (anchorGroupId) {
-      return [anchorGroupId];
+    if (anchor) {
+      return [anchor];
     }
     if (selectedGroupIds.length > 0) {
       return selectedGroupIds;
@@ -174,24 +173,27 @@ export function useGalleryController() {
     });
   };
 
-  const markGroupsViewed = async (anchorGroupId?: string) => {
-    const targets = resolveActionGroupIds(anchorGroupId);
+  const markGroupsViewed = async (options?: { anchor?: string }) => {
+    const targets = resolveTargetGroupIds(options);
     if (targets.length === 0) return;
     for (const groupId of targets) {
       await markGroupViewed(groupId);
     }
   };
 
-  const markGroupsUnviewed = async (anchorGroupId?: string) => {
-    const targets = resolveActionGroupIds(anchorGroupId);
+  const markGroupsUnviewed = async (options?: { anchor?: string }) => {
+    const targets = resolveTargetGroupIds(options);
     if (targets.length === 0) return;
     for (const groupId of targets) {
       await markGroupUnviewed(groupId);
     }
   };
 
-  const adjustGroupsRating = async (delta: number, anchorGroupId?: string) => {
-    const targets = resolveActionGroupIds(anchorGroupId);
+  const adjustGroupsRating = async (
+    delta: number,
+    options?: { anchor?: string }
+  ) => {
+    const targets = resolveTargetGroupIds(options);
     const promptTargets = targets.filter((groupId) =>
       groups.some(
         (group) => group.id === groupId && group.group_type === "prompt"
@@ -206,8 +208,8 @@ export function useGalleryController() {
     await loadRatings(true);
   };
 
-  const deleteGroups = async (anchorGroupId?: string) => {
-    const targets = resolveActionGroupIds(anchorGroupId);
+  const deleteGroups = async (options?: { anchor?: string }) => {
+    const targets = resolveTargetGroupIds(options);
     if (targets.length === 0) return;
     const confirmed = await confirm(
       targets.length > 1

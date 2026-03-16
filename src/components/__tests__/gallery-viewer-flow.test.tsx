@@ -272,7 +272,7 @@ describe("gallery interaction flow", () => {
     });
     fireEvent.click(markViewedButton);
 
-    expect(galleryState.markGroupsViewed).toHaveBeenCalledWith("p:2");
+    expect(galleryState.markGroupsViewed).toHaveBeenCalledWith({ anchor: "p:2" });
   });
 
   it("shows bulk delete action in context menu and dispatches delete", () => {
@@ -292,6 +292,6 @@ describe("gallery interaction flow", () => {
     const deleteButton = screen.getByRole("button", { name: "Delete 2 selected" });
     fireEvent.click(deleteButton);
 
-    expect(galleryState.deleteGroups).toHaveBeenCalledWith("p:2");
+    expect(galleryState.deleteGroups).toHaveBeenCalledWith({ anchor: "p:2" });
   });
 });

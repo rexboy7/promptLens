@@ -141,7 +141,7 @@ export default function GroupList() {
             type="button"
             className="group-context-item"
             onClick={() => {
-              void markGroupsViewed(menuGroup.id);
+              void markGroupsViewed({ anchor: menuGroup.id });
               closeMenu();
             }}
           >
@@ -151,7 +151,7 @@ export default function GroupList() {
             type="button"
             className="group-context-item"
             onClick={() => {
-              void markGroupsUnviewed(menuGroup.id);
+              void markGroupsUnviewed({ anchor: menuGroup.id });
               closeMenu();
             }}
           >
@@ -166,7 +166,7 @@ export default function GroupList() {
               return group?.group_type === "prompt";
             })}
             onClick={() => {
-              void adjustGroupsRating(40, menuGroup.id);
+              void adjustGroupsRating(40, { anchor: menuGroup.id });
               closeMenu();
             }}
           >
@@ -180,7 +180,7 @@ export default function GroupList() {
               return group?.group_type === "prompt";
             })}
             onClick={() => {
-              void adjustGroupsRating(-40, menuGroup.id);
+              void adjustGroupsRating(-40, { anchor: menuGroup.id });
               closeMenu();
             }}
           >
@@ -191,7 +191,7 @@ export default function GroupList() {
             type="button"
             className="group-context-item"
             onClick={() => {
-              void deleteGroups(menuGroup.id);
+              void deleteGroups({ anchor: menuGroup.id });
               closeMenu();
             }}
           >
