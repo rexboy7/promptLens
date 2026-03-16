@@ -13,29 +13,24 @@ import {
 } from "../hooks/useLocalStorage";
 import type { Command } from "./commands";
 import {
-  countGroups,
   deleteGroup,
   deleteImage,
   fixBatches,
   getRatings,
-  listGroups,
   listImages,
   startScan,
   setGroupRating,
 } from "../data/galleryApi";
 import type {
-  Group,
   GroupMode,
   ImageItem,
   RatingItem,
   RankingMode,
   ScanProgressEvent,
 } from "../data/types";
+import { useGroupListController } from "./useGroupListController";
 import { useViewedGroups } from "./useViewedGroups";
 import { ShuffleBag } from "../utils/shuffleBag";
-
-const GROUPS_PER_PAGE = 200;
-const GROUP_FETCH_SIZE = GROUPS_PER_PAGE + 1;
 
 export function useGalleryController() {
   const [rootPath, setRootPath] = useState("");
@@ -52,9 +47,16 @@ export function useGalleryController() {
     ["prompt", "date", "score"],
     "prompt"
   );
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [groupPage, setGroupPage] = useState(0);
-  const [totalGroupCount, setTotalGroupCount] = useState(0);
+  const {
+    groups,
+    groupPage,
+    totalGroupCount,
+    totalGroupPages,
+    groupsPerPage,
+    resetGroupList,
+    loadGroups,
+    setGroupPage,
+  } = useGroupListController();
   const [selectedGroupId, setSelectedGroupId] =
     useLocalStorageOptionalString("promptlens.selectedGroupId");
   const [images, setImages] = useState<ImageItem[]>([]);
@@ -367,8 +369,6 @@ export function useGalleryController() {
   const selectedGroup = groups.find((group) => group.id === selectedGroupId);
   const hasImages = images.length > 0;
   const hasGroups = groups.length > 0;
-  const totalGroupPages =
-    totalGroupCount > 0 ? Math.ceil(totalGroupCount / GROUPS_PER_PAGE) : 0;
 
   function truncateLabel(text: string, maxLength = 120) {
     if (text.length <= maxLength) return text;
@@ -385,50 +385,24 @@ export function useGalleryController() {
     pageOverride?: number
   ) {
     if (!rootPath.trim()) {
-      setGroups([]);
-      setGroupPage(0);
-      setTotalGroupCount(0);
+      resetGroupList();
       setSelectedGroupId(null);
       setImages([]);
       return;
     }
     try {
-      const requestedPage = Math.max(
-        0,
-        pageOverride ?? (nextMode === groupMode ? groupPage : 0)
-      );
       const desiredGroupId =
         pendingSelectionRef.current.groupId ?? selectedGroupId;
       const desiredImageIndex =
         pendingSelectionRef.current.imageIndex ?? selectedImageIndex;
-      const normalizedDateFilter = dateFilter.trim() ? dateFilter.trim() : null;
-      const normalizedSearchText = searchText.trim() ? searchText.trim() : null;
-      const [result, count] = await Promise.all([
-        listGroups({
-          rootPath: rootPath.trim(),
-          dateFilter: normalizedDateFilter,
-          searchText: normalizedSearchText,
-          groupMode: nextMode,
-          limit: GROUP_FETCH_SIZE,
-          offset: requestedPage * GROUPS_PER_PAGE,
-        }),
-        countGroups({
-          rootPath: rootPath.trim(),
-          dateFilter: normalizedDateFilter,
-          searchText: normalizedSearchText,
-          groupMode: nextMode,
-        }),
-      ]);
-      const maxPage = Math.max(0, Math.ceil(count / GROUPS_PER_PAGE) - 1);
-      if (requestedPage > maxPage && count > 0) {
-        setGroupPage(maxPage);
-        await refreshGroups(nextMode, maxPage);
-        return;
-      }
-      const pageItems = result.slice(0, GROUPS_PER_PAGE);
-      setGroups(pageItems);
-      setTotalGroupCount(count);
-      setGroupPage(requestedPage);
+      const { pageItems } = await loadGroups({
+        rootPath,
+        dateFilter,
+        searchText,
+        currentMode: groupMode,
+        nextMode,
+        pageOverride,
+      });
       const nextGroup =
         desiredGroupId && pageItems.some((group) => group.id === desiredGroupId)
           ? desiredGroupId
@@ -524,13 +498,13 @@ export function useGalleryController() {
       title: "Select image root folder",
     });
     if (typeof selection === "string") {
-      setGroupPage(0);
+      resetGroupList();
       setRootPath(selection);
     }
   }
 
   function handleRootChange(value: string) {
-    setGroupPage(0);
+    resetGroupList();
     setRootPath(value);
   }
 
@@ -670,6 +644,7 @@ export function useGalleryController() {
     groupPage,
     totalGroupCount,
     totalGroupPages,
+    groupsPerPage,
     selectedGroupId,
     setSelectedGroupId,
     images,
