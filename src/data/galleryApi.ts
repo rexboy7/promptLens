@@ -37,6 +37,20 @@ export async function listGroups(params: {
   });
 }
 
+export async function countGroups(params: {
+  rootPath: string;
+  dateFilter?: string | null;
+  searchText?: string | null;
+  groupMode: GroupMode;
+}): Promise<number> {
+  return invoke<number>("count_groups", {
+    rootPath: params.rootPath,
+    dateFilter: params.dateFilter ?? null,
+    searchText: params.searchText ?? null,
+    groupMode: params.groupMode,
+  });
+}
+
 export async function listImages(
   rootPath: string,
   groupId: string

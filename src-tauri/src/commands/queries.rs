@@ -295,6 +295,117 @@ pub fn list_groups(
 }
 
 #[tauri::command]
+pub fn count_groups(
+    app: AppHandle,
+    root_path: String,
+    date_filter: Option<String>,
+    search_text: Option<String>,
+    group_mode: Option<String>,
+) -> Result<i64, String> {
+    let conn = open_db(&app, &root_path)?;
+    init_db(&conn)?;
+    let mode = group_mode.unwrap_or_else(|| "prompt".to_string());
+    let search = search_text.unwrap_or_default().trim().to_lowercase();
+    let search = if search.is_empty() { None } else { Some(search) };
+    let search_like = search
+        .as_ref()
+        .map(|s| format!("%{}%", s))
+        .unwrap_or_default();
+    let search_fts = search.as_ref().and_then(|text| {
+        let tokens: Vec<String> = text
+            .split_whitespace()
+            .map(|token| {
+                token
+                    .chars()
+                    .filter(|c| c.is_alphanumeric() || *c == '_')
+                    .collect::<String>()
+            })
+            .filter(|token| !token.is_empty())
+            .collect();
+        if tokens.is_empty() {
+            None
+        } else {
+            Some(tokens.join(" AND "))
+        }
+    });
+
+    let use_fts = search_fts.is_some();
+    let fts_filter = if use_fts {
+        "AND p.id IN (SELECT rowid FROM prompts_fts WHERE prompts_fts MATCH ?2)"
+    } else {
+        ""
+    };
+    let date_like_param = if use_fts { "?3" } else { "?2" };
+    let batch_search_clause = if search.is_some() {
+        format!("AND LOWER(b.date) LIKE {}", date_like_param)
+    } else {
+        String::new()
+    };
+
+    let prompt_query = if mode == "date" {
+        r#"
+            SELECT p.id AS group_id
+            FROM prompts p
+            JOIN images i ON i.prompt_id = p.id
+            WHERE (?1 IS NULL OR i.date = ?1)
+              {fts_where}
+            GROUP BY p.id
+        "#
+    } else {
+        r#"
+            SELECT p.id AS group_id
+            FROM prompts p
+            JOIN images i ON i.prompt_id = p.id
+            WHERE (?1 IS NULL OR i.date = ?1)
+              {fts_where}
+            GROUP BY p.id
+        "#
+    }
+    .replace("{fts_where}", fts_filter);
+
+    let query = format!(
+        r#"
+            SELECT COUNT(*)
+            FROM (
+                {}
+                UNION ALL
+                SELECT b.id AS group_id
+                FROM batches b
+                JOIN images i ON i.batch_id = b.id
+                WHERE i.prompt_id IS NULL
+                  AND (?1 IS NULL OR i.date = ?1)
+                  {batch_search}
+                GROUP BY b.id
+            ) AS grouped
+        "#,
+        prompt_query,
+        batch_search = batch_search_clause
+    );
+
+    let date_value = date_filter
+        .as_ref()
+        .map(|value| Value::from(value.clone()))
+        .unwrap_or(Value::Null);
+    let params_vec = if search.is_none() {
+        vec![date_value]
+    } else if use_fts {
+        vec![
+            date_value,
+            Value::from(search_fts.unwrap_or_default()),
+            Value::from(search_like),
+        ]
+    } else {
+        vec![date_value, Value::from(search_like)]
+    };
+
+    let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
+    let count = stmt
+        .query_row(rusqlite::params_from_iter(params_vec), |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+    Ok(count)
+}
+
+#[tauri::command]
 pub fn list_images(
     app: AppHandle,
     root_path: String,

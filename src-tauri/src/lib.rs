@@ -16,6 +16,7 @@ pub fn run() {
             commands::indexer::start_scan,
             commands::indexer::scan_directory,
             commands::queries::list_groups,
+            commands::queries::count_groups,
             commands::queries::list_images,
             commands::delete::delete_image,
             commands::delete::delete_group,

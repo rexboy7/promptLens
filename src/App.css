@@ -154,22 +154,38 @@ button:hover {
   padding: 6px 0;
   background: rgba(243, 239, 233, 0.92);
   backdrop-filter: blur(2px);
+  flex-wrap: wrap;
 }
 
-.group-page-button {
+.group-page-nav {
   padding: 6px 10px;
+  min-width: 32px;
   font-size: 0.78rem;
 }
 
-.group-page-button:disabled {
+.group-page-nav:disabled {
   opacity: 0.45;
   cursor: not-allowed;
   box-shadow: none;
 }
 
-.group-page-label {
+.group-page-number {
+  padding: 5px 10px;
+  min-width: 34px;
   font-size: 0.78rem;
+}
+
+.group-page-number.active {
+  background: #1f1b18;
+}
+
+.group-page-ellipsis {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 14px;
   color: #6a5d54;
+  font-weight: 600;
 }
 
 .group {

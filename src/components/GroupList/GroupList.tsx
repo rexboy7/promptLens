@@ -4,14 +4,13 @@ import type { MouseEvent } from "react";
 import { useGallery } from "../../app/GalleryContext";
 import type { Group } from "../../data/types";
 import { useContextMenu } from "../../hooks/useContextMenu";
+import { usePagination } from "../../hooks/usePagination";
 
 export default function GroupList() {
   const {
     groups,
     groupPage,
-    groupsPerPage,
-    hasPrevGroupPage,
-    hasNextGroupPage,
+    totalGroupPages,
     goToGroupPage,
     selectedGroupId,
     groupRefs,
@@ -36,28 +35,46 @@ export default function GroupList() {
   }, [groups, menuId]);
 
   const isViewed = (groupId: string) => viewedGroupIds.includes(groupId);
+  const paginationItems = usePagination(groupPage, totalGroupPages);
+  const canGoPrev = groupPage > 0;
+  const canGoNext = groupPage + 1 < totalGroupPages;
 
   return (
     <aside className="group-list">
       <div className="group-list-pagination">
         <button
           type="button"
-          className="group-page-button"
-          disabled={!hasPrevGroupPage}
+          className="group-page-nav"
+          disabled={!canGoPrev}
           onClick={() => goToGroupPage(groupPage - 1)}
         >
-          Prev
+          {"<"}
         </button>
-        <span className="group-page-label">
-          Page {groupPage + 1} • {groupsPerPage} / page
-        </span>
+        {paginationItems.map((item) =>
+          item.type === "ellipsis" ? (
+            <span key={item.key} className="group-page-ellipsis">
+              .
+            </span>
+          ) : (
+            <button
+              key={`page-${item.page}`}
+              type="button"
+              className={
+                item.page === groupPage ? "group-page-number active" : "group-page-number"
+              }
+              onClick={() => goToGroupPage(item.page)}
+            >
+              {item.page + 1}
+            </button>
+          )
+        )}
         <button
           type="button"
-          className="group-page-button"
-          disabled={!hasNextGroupPage}
+          className="group-page-nav"
+          disabled={!canGoNext}
           onClick={() => goToGroupPage(groupPage + 1)}
         >
-          Next
+          {">"}
         </button>
       </div>
       {groups.map((group) => {

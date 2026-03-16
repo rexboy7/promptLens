@@ -13,6 +13,7 @@ import {
 } from "../hooks/useLocalStorage";
 import type { Command } from "./commands";
 import {
+  countGroups,
   deleteGroup,
   deleteImage,
   fixBatches,
@@ -53,7 +54,7 @@ export function useGalleryController() {
   );
   const [groups, setGroups] = useState<Group[]>([]);
   const [groupPage, setGroupPage] = useState(0);
-  const [hasNextGroupPage, setHasNextGroupPage] = useState(false);
+  const [totalGroupCount, setTotalGroupCount] = useState(0);
   const [selectedGroupId, setSelectedGroupId] =
     useLocalStorageOptionalString("promptlens.selectedGroupId");
   const [images, setImages] = useState<ImageItem[]>([]);
@@ -90,9 +91,9 @@ export function useGalleryController() {
   const lastAutoScanRootRef = useRef<string | null>(null);
   const activeScanIdRef = useRef<string | null>(null);
   const activeScanRootRef = useRef<string | null>(null);
-  const refreshGroupsRef = useRef<(nextMode?: GroupMode) => Promise<void>>(
-    async () => {}
-  );
+  const refreshGroupsRef = useRef<
+    (nextMode?: GroupMode, pageOverride?: number) => Promise<void>
+  >(async () => {});
   const { viewedGroupIds, markGroupViewed, markGroupUnviewed } =
     useViewedGroups({
       rootPath,
@@ -201,7 +202,7 @@ export function useGalleryController() {
       setSelectedGroupId(groups[currentIndex + 1].id);
       return;
     }
-    if (currentIndex === groups.length - 1 && hasNextGroupPage) {
+    if (currentIndex === groups.length - 1 && groupPage + 1 < totalGroupPages) {
       const nextPage = groupPage + 1;
       pendingSelectionRef.current = { groupId: null, imageIndex: null };
       setGroupPage(nextPage);
@@ -366,6 +367,8 @@ export function useGalleryController() {
   const selectedGroup = groups.find((group) => group.id === selectedGroupId);
   const hasImages = images.length > 0;
   const hasGroups = groups.length > 0;
+  const totalGroupPages =
+    totalGroupCount > 0 ? Math.ceil(totalGroupCount / GROUPS_PER_PAGE) : 0;
 
   function truncateLabel(text: string, maxLength = 120) {
     if (text.length <= maxLength) return text;
@@ -384,7 +387,7 @@ export function useGalleryController() {
     if (!rootPath.trim()) {
       setGroups([]);
       setGroupPage(0);
-      setHasNextGroupPage(false);
+      setTotalGroupCount(0);
       setSelectedGroupId(null);
       setImages([]);
       return;
@@ -398,17 +401,33 @@ export function useGalleryController() {
         pendingSelectionRef.current.groupId ?? selectedGroupId;
       const desiredImageIndex =
         pendingSelectionRef.current.imageIndex ?? selectedImageIndex;
-      const result = await listGroups({
-        rootPath: rootPath.trim(),
-        dateFilter: dateFilter.trim() ? dateFilter.trim() : null,
-        searchText: searchText.trim() ? searchText.trim() : null,
-        groupMode: nextMode,
-        limit: GROUP_FETCH_SIZE,
-        offset: requestedPage * GROUPS_PER_PAGE,
-      });
+      const normalizedDateFilter = dateFilter.trim() ? dateFilter.trim() : null;
+      const normalizedSearchText = searchText.trim() ? searchText.trim() : null;
+      const [result, count] = await Promise.all([
+        listGroups({
+          rootPath: rootPath.trim(),
+          dateFilter: normalizedDateFilter,
+          searchText: normalizedSearchText,
+          groupMode: nextMode,
+          limit: GROUP_FETCH_SIZE,
+          offset: requestedPage * GROUPS_PER_PAGE,
+        }),
+        countGroups({
+          rootPath: rootPath.trim(),
+          dateFilter: normalizedDateFilter,
+          searchText: normalizedSearchText,
+          groupMode: nextMode,
+        }),
+      ]);
+      const maxPage = Math.max(0, Math.ceil(count / GROUPS_PER_PAGE) - 1);
+      if (requestedPage > maxPage && count > 0) {
+        setGroupPage(maxPage);
+        await refreshGroups(nextMode, maxPage);
+        return;
+      }
       const pageItems = result.slice(0, GROUPS_PER_PAGE);
       setGroups(pageItems);
-      setHasNextGroupPage(result.length > GROUPS_PER_PAGE);
+      setTotalGroupCount(count);
       setGroupPage(requestedPage);
       const nextGroup =
         desiredGroupId && pageItems.some((group) => group.id === desiredGroupId)
@@ -431,7 +450,7 @@ export function useGalleryController() {
   }, [refreshGroups]);
 
   function goToGroupPage(nextPage: number) {
-    if (nextPage < 0) return;
+    if (nextPage < 0 || nextPage >= totalGroupPages) return;
     pendingSelectionRef.current = { groupId: null, imageIndex: null };
     setGroupPage(nextPage);
     void refreshGroups(groupMode, nextPage);
@@ -649,9 +668,8 @@ export function useGalleryController() {
     setGroupMode,
     groups,
     groupPage,
-    groupsPerPage: GROUPS_PER_PAGE,
-    hasPrevGroupPage: groupPage > 0,
-    hasNextGroupPage,
+    totalGroupCount,
+    totalGroupPages,
     selectedGroupId,
     setSelectedGroupId,
     images,
