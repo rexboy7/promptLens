@@ -24,6 +24,7 @@ export async function listGroups(params: {
   dateFilter?: string | null;
   searchText?: string | null;
   minGroupSize?: number | null;
+  maxGroupSize?: number | null;
   groupMode: GroupMode;
   limit?: number | null;
   offset?: number | null;
@@ -33,6 +34,7 @@ export async function listGroups(params: {
     dateFilter: params.dateFilter ?? null,
     searchText: params.searchText ?? null,
     minSize: params.minGroupSize ?? null,
+    maxSize: params.maxGroupSize ?? null,
     groupMode: params.groupMode,
     limit: params.limit ?? null,
     offset: params.offset ?? null,
@@ -44,6 +46,7 @@ export async function countGroups(params: {
   dateFilter?: string | null;
   searchText?: string | null;
   minGroupSize?: number | null;
+  maxGroupSize?: number | null;
   groupMode: GroupMode;
 }): Promise<number> {
   return invoke<number>("count_groups", {
@@ -51,6 +54,7 @@ export async function countGroups(params: {
     dateFilter: params.dateFilter ?? null,
     searchText: params.searchText ?? null,
     minSize: params.minGroupSize ?? null,
+    maxSize: params.maxGroupSize ?? null,
     groupMode: params.groupMode,
   });
 }

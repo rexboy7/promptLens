@@ -10,6 +10,7 @@ type LoadGroupsParams = {
   dateFilter: string;
   searchText: string;
   minGroupSize: string;
+  maxGroupSize: string;
   currentMode: GroupMode;
   nextMode?: GroupMode;
   pageOverride?: number;
@@ -55,6 +56,11 @@ export function useGroupListController() {
       Number.isFinite(parsedMinGroupSize) && parsedMinGroupSize > 0
         ? parsedMinGroupSize
         : null;
+    const parsedMaxGroupSize = Number.parseInt(params.maxGroupSize.trim(), 10);
+    const normalizedMaxGroupSize =
+      Number.isFinite(parsedMaxGroupSize) && parsedMaxGroupSize > 0
+        ? parsedMaxGroupSize
+        : null;
 
     while (true) {
       const [result, count] = await Promise.all([
@@ -63,6 +69,7 @@ export function useGroupListController() {
           dateFilter: normalizedDateFilter,
           searchText: normalizedSearchText,
           minGroupSize: normalizedMinGroupSize,
+          maxGroupSize: normalizedMaxGroupSize,
           groupMode: mode,
           limit: GROUP_FETCH_SIZE,
           offset: requestedPage * GROUPS_PER_PAGE,
@@ -72,6 +79,7 @@ export function useGroupListController() {
           dateFilter: normalizedDateFilter,
           searchText: normalizedSearchText,
           minGroupSize: normalizedMinGroupSize,
+          maxGroupSize: normalizedMaxGroupSize,
           groupMode: mode,
         }),
       ]);

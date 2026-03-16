@@ -5,12 +5,14 @@ export default function Filters() {
     searchText,
     dateFilter,
     minGroupSize,
+    maxGroupSize,
     groupMode,
     status,
     scanProgress,
     setSearchText,
     setDateFilter,
     setMinGroupSize,
+    setMaxGroupSize,
     setGroupMode,
     refreshGroups,
   } = useGallery();
@@ -30,6 +32,12 @@ export default function Filters() {
         value={minGroupSize}
         onChange={(event) => setMinGroupSize(event.currentTarget.value)}
         placeholder="Min images"
+        inputMode="numeric"
+      />
+      <input
+        value={maxGroupSize}
+        onChange={(event) => setMaxGroupSize(event.currentTarget.value)}
+        placeholder="Max images"
         inputMode="numeric"
       />
       <button type="button" onClick={() => refreshGroups(groupMode, 0)}>

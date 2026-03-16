@@ -51,6 +51,10 @@ export function useGalleryController() {
     "promptlens.minGroupSize",
     ""
   );
+  const [maxGroupSize, setMaxGroupSize] = useLocalStorageString(
+    "promptlens.maxGroupSize",
+    ""
+  );
   const [groupMode, setGroupMode] = useLocalStorageEnum<GroupMode>(
     "promptlens.groupMode",
     ["prompt", "date", "score"],
@@ -527,6 +531,7 @@ export function useGalleryController() {
         dateFilter,
         searchText,
         minGroupSize,
+        maxGroupSize,
         currentMode: groupMode,
         nextMode,
         pageOverride,
@@ -763,6 +768,8 @@ export function useGalleryController() {
     setSearchText,
     minGroupSize,
     setMinGroupSize,
+    maxGroupSize,
+    setMaxGroupSize,
     groupMode,
     setGroupMode,
     groups,

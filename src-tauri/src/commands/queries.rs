@@ -9,12 +9,14 @@ fn list_groups_with_conn(
     date_filter: Option<String>,
     search_text: Option<String>,
     min_size: Option<i64>,
+    max_size: Option<i64>,
     group_mode: Option<String>,
     limit: Option<i64>,
     offset: Option<i64>,
 ) -> Result<Vec<GroupItem>, String> {
     let mode = group_mode.unwrap_or_else(|| "prompt".to_string());
     let min_group_size = min_size.unwrap_or(1).max(1);
+    let max_group_size = max_size.filter(|value| *value > 0).unwrap_or(i64::MAX);
     let search = search_text.unwrap_or_default().trim().to_lowercase();
     let search = if search.is_empty() { None } else { Some(search) };
     let search_like = search
@@ -47,6 +49,13 @@ fn list_groups_with_conn(
     } else {
         "?2"
     };
+    let max_size_param = if use_fts {
+        "?5"
+    } else if search.is_some() {
+        "?4"
+    } else {
+        "?3"
+    };
     let fts_filter = if use_fts {
         "AND p.id IN (SELECT rowid FROM prompts_fts WHERE prompts_fts MATCH ?2)"
     } else {
@@ -69,9 +78,11 @@ fn list_groups_with_conn(
               {fts_where}
             GROUP BY p.id
             HAVING COUNT(i.id) >= {min_size_param}
+               AND COUNT(i.id) <= {max_size_param}
             "#
         .replace("{fts_where}", fts_filter)
-        .replace("{min_size_param}", min_size_param);
+        .replace("{min_size_param}", min_size_param)
+        .replace("{max_size_param}", max_size_param);
 
         let date_like_param = if use_fts { "?3" } else { "?2" };
         let batch_search_clause = if search.is_some() {
@@ -103,12 +114,14 @@ fn list_groups_with_conn(
                       {batch_search}
                     GROUP BY b.id, b.date
                     HAVING COUNT(i.id) >= {min_size_param}
+                       AND COUNT(i.id) <= {max_size_param}
                 )
                 ORDER BY date DESC, sort_mtime DESC, label DESC
                 "#,
             prompt_query,
             batch_search = batch_search_clause,
-            min_size_param = min_size_param
+            min_size_param = min_size_param,
+            max_size_param = max_size_param
         );
 
         let date_value = date_filter
@@ -127,6 +140,7 @@ fn list_groups_with_conn(
             vec![date_value.clone(), Value::from(search_like.clone())]
         };
         params_vec.push(Value::from(min_group_size));
+        params_vec.push(Value::from(max_group_size));
         if let Some(limit_value) = limit {
             let offset_value = offset.unwrap_or(0).max(0);
             let limit_param_index = params_vec.len() + 1;
@@ -187,9 +201,11 @@ fn list_groups_with_conn(
               {fts_where}
             GROUP BY p.id
             HAVING COUNT(i.id) >= {min_size_param}
+               AND COUNT(i.id) <= {max_size_param}
             "#
             .replace("{fts_where}", fts_filter)
-            .replace("{min_size_param}", min_size_param),
+            .replace("{min_size_param}", min_size_param)
+            .replace("{max_size_param}", max_size_param),
             "ORDER BY score DESC, label DESC".to_string(),
         )
     } else {
@@ -209,9 +225,11 @@ fn list_groups_with_conn(
               {fts_where}
             GROUP BY p.id
             HAVING COUNT(i.id) >= {min_size_param}
+               AND COUNT(i.id) <= {max_size_param}
             "#
             .replace("{fts_where}", fts_filter)
-            .replace("{min_size_param}", min_size_param),
+            .replace("{min_size_param}", min_size_param)
+            .replace("{max_size_param}", max_size_param),
             "ORDER BY group_type ASC, label DESC".to_string(),
         )
     };
@@ -245,13 +263,15 @@ fn list_groups_with_conn(
                   {batch_search}
                 GROUP BY b.id, b.date
                 HAVING COUNT(i.id) >= {min_size_param}
+                   AND COUNT(i.id) <= {max_size_param}
             )
             {}
             "#,
         prompt_query,
         order_clause,
         batch_search = batch_search_clause,
-        min_size_param = min_size_param
+        min_size_param = min_size_param,
+        max_size_param = max_size_param
     );
 
     let date_value = date_filter
@@ -270,6 +290,7 @@ fn list_groups_with_conn(
         vec![date_value.clone(), Value::from(search_like.clone())]
     };
     params_vec.push(Value::from(min_group_size));
+    params_vec.push(Value::from(max_group_size));
     if let Some(limit_value) = limit {
         let offset_value = offset.unwrap_or(0).max(0);
         let limit_param_index = params_vec.len() + 1;
@@ -319,6 +340,7 @@ pub fn list_groups(
     date_filter: Option<String>,
     search_text: Option<String>,
     min_size: Option<i64>,
+    max_size: Option<i64>,
     group_mode: Option<String>,
     limit: Option<i64>,
     offset: Option<i64>,
@@ -330,6 +352,7 @@ pub fn list_groups(
         date_filter,
         search_text,
         min_size,
+        max_size,
         group_mode,
         limit,
         offset,
@@ -341,10 +364,12 @@ fn count_groups_with_conn(
     date_filter: Option<String>,
     search_text: Option<String>,
     min_size: Option<i64>,
+    max_size: Option<i64>,
     group_mode: Option<String>,
 ) -> Result<i64, String> {
     let mode = group_mode.unwrap_or_else(|| "prompt".to_string());
     let min_group_size = min_size.unwrap_or(1).max(1);
+    let max_group_size = max_size.filter(|value| *value > 0).unwrap_or(i64::MAX);
     let search = search_text.unwrap_or_default().trim().to_lowercase();
     let search = if search.is_empty() { None } else { Some(search) };
     let search_like = search
@@ -377,6 +402,13 @@ fn count_groups_with_conn(
     } else {
         "?2"
     };
+    let max_size_param = if use_fts {
+        "?5"
+    } else if search.is_some() {
+        "?4"
+    } else {
+        "?3"
+    };
     let fts_filter = if use_fts {
         "AND p.id IN (SELECT rowid FROM prompts_fts WHERE prompts_fts MATCH ?2)"
     } else {
@@ -398,6 +430,7 @@ fn count_groups_with_conn(
               {fts_where}
             GROUP BY p.id
             HAVING COUNT(i.id) >= {min_size_param}
+               AND COUNT(i.id) <= {max_size_param}
         "#
     } else {
         r#"
@@ -408,10 +441,12 @@ fn count_groups_with_conn(
               {fts_where}
             GROUP BY p.id
             HAVING COUNT(i.id) >= {min_size_param}
+               AND COUNT(i.id) <= {max_size_param}
         "#
     }
     .replace("{fts_where}", fts_filter)
-    .replace("{min_size_param}", min_size_param);
+    .replace("{min_size_param}", min_size_param)
+    .replace("{max_size_param}", max_size_param);
 
     let query = format!(
         r#"
@@ -427,11 +462,13 @@ fn count_groups_with_conn(
                   {batch_search}
                 GROUP BY b.id
                 HAVING COUNT(i.id) >= {min_size_param}
+                   AND COUNT(i.id) <= {max_size_param}
             ) AS grouped
         "#,
         prompt_query,
         batch_search = batch_search_clause,
-        min_size_param = min_size_param
+        min_size_param = min_size_param,
+        max_size_param = max_size_param
     );
 
     let date_value = date_filter
@@ -450,6 +487,7 @@ fn count_groups_with_conn(
         vec![date_value, Value::from(search_like)]
     };
     params_vec.push(Value::from(min_group_size));
+    params_vec.push(Value::from(max_group_size));
 
     let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
     let count = stmt
@@ -465,11 +503,12 @@ pub fn count_groups(
     date_filter: Option<String>,
     search_text: Option<String>,
     min_size: Option<i64>,
+    max_size: Option<i64>,
     group_mode: Option<String>,
 ) -> Result<i64, String> {
     let conn = open_db(&app, &root_path)?;
     init_db(&conn)?;
-    count_groups_with_conn(&conn, date_filter, search_text, min_size, group_mode)
+    count_groups_with_conn(&conn, date_filter, search_text, min_size, max_size, group_mode)
 }
 
 #[tauri::command]
@@ -625,6 +664,7 @@ mod tests {
             None,
             None,
             Some(2),
+            None,
             Some("prompt".to_string()),
             None,
             None,
@@ -648,6 +688,7 @@ mod tests {
             None,
             None,
             Some(1),
+            None,
             Some("prompt".to_string()),
         )
         .expect("count_groups_with_conn failed for min size 1");
@@ -656,11 +697,54 @@ mod tests {
             None,
             None,
             Some(2),
+            None,
             Some("prompt".to_string()),
         )
         .expect("count_groups_with_conn failed for min size 2");
 
         assert_eq!(all_count, 4);
         assert_eq!(filtered_count, 2);
+    }
+
+    #[test]
+    fn max_size_filters_list_groups_results() {
+        let conn = Connection::open_in_memory().expect("failed to open sqlite in-memory db");
+        init_db(&conn).expect("failed to initialize db");
+        seed_groups(&conn);
+
+        let groups = list_groups_with_conn(
+            &conn,
+            None,
+            None,
+            Some(1),
+            Some(2),
+            Some("prompt".to_string()),
+            None,
+            None,
+        )
+        .expect("list_groups_with_conn failed");
+
+        assert_eq!(groups.len(), 3);
+        assert!(groups.iter().all(|group| group.size <= 2));
+        assert!(!groups.iter().any(|group| group.size > 2));
+    }
+
+    #[test]
+    fn max_size_filters_count_groups_results() {
+        let conn = Connection::open_in_memory().expect("failed to open sqlite in-memory db");
+        init_db(&conn).expect("failed to initialize db");
+        seed_groups(&conn);
+
+        let count = count_groups_with_conn(
+            &conn,
+            None,
+            None,
+            Some(1),
+            Some(2),
+            Some("prompt".to_string()),
+        )
+        .expect("count_groups_with_conn failed for max size 2");
+
+        assert_eq!(count, 3);
     }
 }
