@@ -1,21 +1,20 @@
 use crate::db::{init_db, open_db};
 use crate::types::{GroupItem, ImageItem};
+use rusqlite::Connection;
 use rusqlite::types::Value;
 use tauri::AppHandle;
 
-#[tauri::command]
-pub fn list_groups(
-    app: AppHandle,
-    root_path: String,
+fn list_groups_with_conn(
+    conn: &Connection,
     date_filter: Option<String>,
     search_text: Option<String>,
+    min_size: Option<i64>,
     group_mode: Option<String>,
     limit: Option<i64>,
     offset: Option<i64>,
 ) -> Result<Vec<GroupItem>, String> {
-    let conn = open_db(&app, &root_path)?;
-    init_db(&conn)?;
     let mode = group_mode.unwrap_or_else(|| "prompt".to_string());
+    let min_group_size = min_size.unwrap_or(1).max(1);
     let search = search_text.unwrap_or_default().trim().to_lowercase();
     let search = if search.is_empty() { None } else { Some(search) };
     let search_like = search
@@ -41,6 +40,13 @@ pub fn list_groups(
     });
 
     let use_fts = search_fts.is_some();
+    let min_size_param = if use_fts {
+        "?4"
+    } else if search.is_some() {
+        "?3"
+    } else {
+        "?2"
+    };
     let fts_filter = if use_fts {
         "AND p.id IN (SELECT rowid FROM prompts_fts WHERE prompts_fts MATCH ?2)"
     } else {
@@ -62,8 +68,10 @@ pub fn list_groups(
             WHERE (?1 IS NULL OR i.date = ?1)
               {fts_where}
             GROUP BY p.id
+            HAVING COUNT(i.id) >= {min_size_param}
             "#
-        .replace("{fts_where}", fts_filter);
+        .replace("{fts_where}", fts_filter)
+        .replace("{min_size_param}", min_size_param);
 
         let date_like_param = if use_fts { "?3" } else { "?2" };
         let batch_search_clause = if search.is_some() {
@@ -94,11 +102,13 @@ pub fn list_groups(
                       AND (?1 IS NULL OR i.date = ?1)
                       {batch_search}
                     GROUP BY b.id, b.date
+                    HAVING COUNT(i.id) >= {min_size_param}
                 )
                 ORDER BY date DESC, sort_mtime DESC, label DESC
                 "#,
             prompt_query,
-            batch_search = batch_search_clause
+            batch_search = batch_search_clause,
+            min_size_param = min_size_param
         );
 
         let date_value = date_filter
@@ -116,6 +126,7 @@ pub fn list_groups(
         } else {
             vec![date_value.clone(), Value::from(search_like.clone())]
         };
+        params_vec.push(Value::from(min_group_size));
         if let Some(limit_value) = limit {
             let offset_value = offset.unwrap_or(0).max(0);
             let limit_param_index = params_vec.len() + 1;
@@ -175,8 +186,10 @@ pub fn list_groups(
             WHERE (?1 IS NULL OR i.date = ?1)
               {fts_where}
             GROUP BY p.id
+            HAVING COUNT(i.id) >= {min_size_param}
             "#
-            .replace("{fts_where}", fts_filter),
+            .replace("{fts_where}", fts_filter)
+            .replace("{min_size_param}", min_size_param),
             "ORDER BY score DESC, label DESC".to_string(),
         )
     } else {
@@ -195,8 +208,10 @@ pub fn list_groups(
             WHERE (?1 IS NULL OR i.date = ?1)
               {fts_where}
             GROUP BY p.id
+            HAVING COUNT(i.id) >= {min_size_param}
             "#
-            .replace("{fts_where}", fts_filter),
+            .replace("{fts_where}", fts_filter)
+            .replace("{min_size_param}", min_size_param),
             "ORDER BY group_type ASC, label DESC".to_string(),
         )
     };
@@ -229,12 +244,14 @@ pub fn list_groups(
                   AND (?1 IS NULL OR i.date = ?1)
                   {batch_search}
                 GROUP BY b.id, b.date
+                HAVING COUNT(i.id) >= {min_size_param}
             )
             {}
             "#,
         prompt_query,
         order_clause,
-        batch_search = batch_search_clause
+        batch_search = batch_search_clause,
+        min_size_param = min_size_param
     );
 
     let date_value = date_filter
@@ -252,6 +269,7 @@ pub fn list_groups(
     } else {
         vec![date_value.clone(), Value::from(search_like.clone())]
     };
+    params_vec.push(Value::from(min_group_size));
     if let Some(limit_value) = limit {
         let offset_value = offset.unwrap_or(0).max(0);
         let limit_param_index = params_vec.len() + 1;
@@ -295,16 +313,38 @@ pub fn list_groups(
 }
 
 #[tauri::command]
-pub fn count_groups(
+pub fn list_groups(
     app: AppHandle,
     root_path: String,
     date_filter: Option<String>,
     search_text: Option<String>,
+    min_size: Option<i64>,
     group_mode: Option<String>,
-) -> Result<i64, String> {
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Vec<GroupItem>, String> {
     let conn = open_db(&app, &root_path)?;
     init_db(&conn)?;
+    list_groups_with_conn(
+        &conn,
+        date_filter,
+        search_text,
+        min_size,
+        group_mode,
+        limit,
+        offset,
+    )
+}
+
+fn count_groups_with_conn(
+    conn: &Connection,
+    date_filter: Option<String>,
+    search_text: Option<String>,
+    min_size: Option<i64>,
+    group_mode: Option<String>,
+) -> Result<i64, String> {
     let mode = group_mode.unwrap_or_else(|| "prompt".to_string());
+    let min_group_size = min_size.unwrap_or(1).max(1);
     let search = search_text.unwrap_or_default().trim().to_lowercase();
     let search = if search.is_empty() { None } else { Some(search) };
     let search_like = search
@@ -330,6 +370,13 @@ pub fn count_groups(
     });
 
     let use_fts = search_fts.is_some();
+    let min_size_param = if use_fts {
+        "?4"
+    } else if search.is_some() {
+        "?3"
+    } else {
+        "?2"
+    };
     let fts_filter = if use_fts {
         "AND p.id IN (SELECT rowid FROM prompts_fts WHERE prompts_fts MATCH ?2)"
     } else {
@@ -350,6 +397,7 @@ pub fn count_groups(
             WHERE (?1 IS NULL OR i.date = ?1)
               {fts_where}
             GROUP BY p.id
+            HAVING COUNT(i.id) >= {min_size_param}
         "#
     } else {
         r#"
@@ -359,9 +407,11 @@ pub fn count_groups(
             WHERE (?1 IS NULL OR i.date = ?1)
               {fts_where}
             GROUP BY p.id
+            HAVING COUNT(i.id) >= {min_size_param}
         "#
     }
-    .replace("{fts_where}", fts_filter);
+    .replace("{fts_where}", fts_filter)
+    .replace("{min_size_param}", min_size_param);
 
     let query = format!(
         r#"
@@ -376,17 +426,19 @@ pub fn count_groups(
                   AND (?1 IS NULL OR i.date = ?1)
                   {batch_search}
                 GROUP BY b.id
+                HAVING COUNT(i.id) >= {min_size_param}
             ) AS grouped
         "#,
         prompt_query,
-        batch_search = batch_search_clause
+        batch_search = batch_search_clause,
+        min_size_param = min_size_param
     );
 
     let date_value = date_filter
         .as_ref()
         .map(|value| Value::from(value.clone()))
         .unwrap_or(Value::Null);
-    let params_vec = if search.is_none() {
+    let mut params_vec = if search.is_none() {
         vec![date_value]
     } else if use_fts {
         vec![
@@ -397,12 +449,27 @@ pub fn count_groups(
     } else {
         vec![date_value, Value::from(search_like)]
     };
+    params_vec.push(Value::from(min_group_size));
 
     let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
     let count = stmt
         .query_row(rusqlite::params_from_iter(params_vec), |row| row.get(0))
         .map_err(|e| e.to_string())?;
     Ok(count)
+}
+
+#[tauri::command]
+pub fn count_groups(
+    app: AppHandle,
+    root_path: String,
+    date_filter: Option<String>,
+    search_text: Option<String>,
+    min_size: Option<i64>,
+    group_mode: Option<String>,
+) -> Result<i64, String> {
+    let conn = open_db(&app, &root_path)?;
+    init_db(&conn)?;
+    count_groups_with_conn(&conn, date_filter, search_text, min_size, group_mode)
 }
 
 #[tauri::command]
@@ -454,4 +521,146 @@ pub fn list_images(
         images.push(row.map_err(|e| e.to_string())?);
     }
     Ok(images)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{count_groups_with_conn, list_groups_with_conn};
+    use crate::db::init_db;
+    use rusqlite::{params, Connection};
+
+    fn seed_groups(conn: &Connection) {
+        conn.execute("INSERT INTO prompts (text) VALUES (?1)", params!["p-one"])
+            .expect("failed to insert prompt one");
+        conn.execute("INSERT INTO prompts (text) VALUES (?1)", params!["p-two"])
+            .expect("failed to insert prompt two");
+        conn.execute(
+            "INSERT OR REPLACE INTO prompts_fts (rowid, text) VALUES (?1, ?2)",
+            params![1_i64, "p-one"],
+        )
+        .expect("failed to insert prompt one fts");
+        conn.execute(
+            "INSERT OR REPLACE INTO prompts_fts (rowid, text) VALUES (?1, ?2)",
+            params![2_i64, "p-two"],
+        )
+        .expect("failed to insert prompt two fts");
+
+        conn.execute(
+            "INSERT INTO batches (date, first_serial, last_serial, first_seed, last_seed, representative_path)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params!["2026-03-17", 1_i64, 2_i64, 100_i64, 101_i64, "/tmp/prompt-batch.png"],
+        )
+        .expect("failed to insert prompt batch");
+        let prompt_batch_id = conn.last_insert_rowid();
+
+        conn.execute(
+            "INSERT INTO batches (date, first_serial, last_serial, first_seed, last_seed, representative_path)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params!["2026-03-16", 10_i64, 12_i64, 200_i64, 202_i64, "/tmp/unprompted-large.png"],
+        )
+        .expect("failed to insert unprompted large batch");
+        let unprompted_large_batch_id = conn.last_insert_rowid();
+
+        conn.execute(
+            "INSERT INTO batches (date, first_serial, last_serial, first_seed, last_seed, representative_path)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params!["2026-03-15", 20_i64, 20_i64, 300_i64, 300_i64, "/tmp/unprompted-small.png"],
+        )
+        .expect("failed to insert unprompted small batch");
+        let unprompted_small_batch_id = conn.last_insert_rowid();
+
+        conn.execute(
+            "INSERT INTO images (path, date, serial, seed, batch_id, mtime, prompt_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params!["/tmp/p1-1.png", "2026-03-17", 1_i64, 100_i64, prompt_batch_id, 1_i64, 1_i64],
+        )
+        .expect("failed to insert p1 image one");
+        conn.execute(
+            "INSERT INTO images (path, date, serial, seed, batch_id, mtime, prompt_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params!["/tmp/p1-2.png", "2026-03-17", 2_i64, 101_i64, prompt_batch_id, 1_i64, 1_i64],
+        )
+        .expect("failed to insert p1 image two");
+        conn.execute(
+            "INSERT INTO images (path, date, serial, seed, batch_id, mtime, prompt_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params!["/tmp/p2-1.png", "2026-03-17", 3_i64, 102_i64, prompt_batch_id, 1_i64, 2_i64],
+        )
+        .expect("failed to insert p2 image one");
+
+        conn.execute(
+            "INSERT INTO images (path, date, serial, seed, batch_id, mtime, prompt_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL)",
+            params!["/tmp/u-large-1.png", "2026-03-16", 10_i64, 200_i64, unprompted_large_batch_id, 1_i64],
+        )
+        .expect("failed to insert unprompted large image one");
+        conn.execute(
+            "INSERT INTO images (path, date, serial, seed, batch_id, mtime, prompt_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL)",
+            params!["/tmp/u-large-2.png", "2026-03-16", 11_i64, 201_i64, unprompted_large_batch_id, 1_i64],
+        )
+        .expect("failed to insert unprompted large image two");
+        conn.execute(
+            "INSERT INTO images (path, date, serial, seed, batch_id, mtime, prompt_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL)",
+            params!["/tmp/u-large-3.png", "2026-03-16", 12_i64, 202_i64, unprompted_large_batch_id, 1_i64],
+        )
+        .expect("failed to insert unprompted large image three");
+        conn.execute(
+            "INSERT INTO images (path, date, serial, seed, batch_id, mtime, prompt_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL)",
+            params!["/tmp/u-small-1.png", "2026-03-15", 20_i64, 300_i64, unprompted_small_batch_id, 1_i64],
+        )
+        .expect("failed to insert unprompted small image");
+    }
+
+    #[test]
+    fn min_size_filters_list_groups_results() {
+        let conn = Connection::open_in_memory().expect("failed to open sqlite in-memory db");
+        init_db(&conn).expect("failed to initialize db");
+        seed_groups(&conn);
+
+        let groups = list_groups_with_conn(
+            &conn,
+            None,
+            None,
+            Some(2),
+            Some("prompt".to_string()),
+            None,
+            None,
+        )
+        .expect("list_groups_with_conn failed");
+
+        assert_eq!(groups.len(), 2);
+        assert!(groups.iter().all(|group| group.size >= 2));
+        assert!(groups.iter().any(|group| group.id == "p:1"));
+        assert!(groups.iter().any(|group| group.id.starts_with("b:")));
+    }
+
+    #[test]
+    fn min_size_filters_count_groups_results() {
+        let conn = Connection::open_in_memory().expect("failed to open sqlite in-memory db");
+        init_db(&conn).expect("failed to initialize db");
+        seed_groups(&conn);
+
+        let all_count = count_groups_with_conn(
+            &conn,
+            None,
+            None,
+            Some(1),
+            Some("prompt".to_string()),
+        )
+        .expect("count_groups_with_conn failed for min size 1");
+        let filtered_count = count_groups_with_conn(
+            &conn,
+            None,
+            None,
+            Some(2),
+            Some("prompt".to_string()),
+        )
+        .expect("count_groups_with_conn failed for min size 2");
+
+        assert_eq!(all_count, 4);
+        assert_eq!(filtered_count, 2);
+    }
 }

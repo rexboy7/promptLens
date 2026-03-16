@@ -335,7 +335,6 @@ Score mode is backed by SQL ordering; it persists in localStorage.
 - Prompt is group label; no per-image prompt yet.
 - Date metadata exists only if group mode yields it.
 - Ranking uses prompt-based groups (not batch-only groups).
-- No tests (intentionally minimal).
 
 ---
 
@@ -378,8 +377,27 @@ Score mode is backed by SQL ordering; it persists in localStorage.
 
 ## Testing Guidelines
 
-- This repo currently does not include formal tests.
-- When adding tests, use Swift Testing conventions (see global instructions).
+- Test stacks:
+  - Backend: Rust unit tests with `#[cfg(test)]` / `#[test]` inside source files under `src-tauri/src/*`.
+  - Frontend: Vitest + React Testing Library under `src/**/*.test.ts(x)`.
+- Run tests:
+  - Frontend: `pnpm test`
+  - Backend: `cd src-tauri && cargo test`
+- Current backend test coverage includes:
+  - Prompt extraction normalization (`src-tauri/src/prompts.rs`)
+  - Index parsing and batch split behavior (`src-tauri/src/commands/indexer.rs`)
+  - Ranking comparison rating/match updates (`src-tauri/src/commands/ratings.rs`)
+- Current frontend test coverage includes:
+  - Group select -> image click -> viewer metadata flow
+  - Viewer backdrop close behavior
+  - Viewer next/prev navigation boundaries
+  - Group/image empty states
+  - Group list pagination callbacks
+  - Keyboard `Enter` dispatch in `useKeyboard`
+- Frontend test conventions:
+  - Prefer behavior-oriented tests over snapshots.
+  - Mock Tauri APIs (`convertFileSrc`, events/window APIs) to keep tests deterministic.
+  - Keep tests small and focused on user-observable outcomes.
 
 ---
 

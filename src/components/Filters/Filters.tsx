@@ -4,11 +4,13 @@ export default function Filters() {
   const {
     searchText,
     dateFilter,
+    minGroupSize,
     groupMode,
     status,
     scanProgress,
     setSearchText,
     setDateFilter,
+    setMinGroupSize,
     setGroupMode,
     refreshGroups,
   } = useGallery();
@@ -23,6 +25,12 @@ export default function Filters() {
         value={dateFilter}
         onChange={(event) => setDateFilter(event.currentTarget.value)}
         placeholder="Date filter YYYY-MM-DD"
+      />
+      <input
+        value={minGroupSize}
+        onChange={(event) => setMinGroupSize(event.currentTarget.value)}
+        placeholder="Min images"
+        inputMode="numeric"
       />
       <button type="button" onClick={() => refreshGroups(groupMode, 0)}>
         Apply
