@@ -32,6 +32,11 @@ import { useGroupListController } from "./useGroupListController";
 import { useViewedGroups } from "./useViewedGroups";
 import { ShuffleBag } from "../utils/shuffleBag";
 
+type GroupSelectionState = {
+  activeId: string | null;
+  selectedIds: string[];
+};
+
 export function useGalleryController() {
   const [rootPath, setRootPath] = useState("");
   const [dateFilter, setDateFilter] = useLocalStorageString(
@@ -61,9 +66,12 @@ export function useGalleryController() {
     loadGroups,
     setGroupPage,
   } = useGroupListController();
-  const [selectedGroupId, setSelectedGroupId] =
+  const [storedSelectedGroupId, setStoredSelectedGroupId] =
     useLocalStorageOptionalString("promptlens.selectedGroupId");
-  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
+  const [groupSelection, setGroupSelectionState] = useState<GroupSelectionState>({
+    activeId: storedSelectedGroupId,
+    selectedIds: storedSelectedGroupId ? [storedSelectedGroupId] : [],
+  });
   const [images, setImages] = useState<ImageItem[]>([]);
   const [selectedImageIndex, setSelectedImageIndex] =
     useLocalStorageOptionalNumber("promptlens.selectedImageIndex");
@@ -82,6 +90,8 @@ export function useGalleryController() {
     Record<string, RatingItem>
   >({});
   const [ratingsVersion, setRatingsVersion] = useState(0);
+  const selectedGroupId = groupSelection.activeId;
+  const selectedGroupIds = groupSelection.selectedIds;
 
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const slideshowRef = useRef<number | null>(null);
@@ -118,6 +128,11 @@ export function useGalleryController() {
     await loadRatings(true);
   };
 
+  const applyGroupSelection = (next: GroupSelectionState) => {
+    setGroupSelectionState(next);
+    setStoredSelectedGroupId(next.activeId);
+  };
+
   const resolveActionGroupIds = (anchorGroupId?: string): string[] => {
     if (
       anchorGroupId &&
@@ -140,22 +155,23 @@ export function useGalleryController() {
 
   const setGroupSelection = (groupId: string, multiSelect = false) => {
     if (!multiSelect) {
-      setSelectedGroupId(groupId);
-      setSelectedGroupIds([groupId]);
+      applyGroupSelection({ activeId: groupId, selectedIds: [groupId] });
       return;
     }
 
     if (selectedGroupIds.includes(groupId)) {
       const next = selectedGroupIds.filter((id) => id !== groupId);
-      setSelectedGroupIds(next);
-      if (selectedGroupId === groupId) {
-        setSelectedGroupId(next.length > 0 ? next[0] : null);
-      }
+      applyGroupSelection({
+        activeId: selectedGroupId === groupId ? next[0] ?? null : selectedGroupId,
+        selectedIds: next,
+      });
       return;
     }
 
-    setSelectedGroupIds([...selectedGroupIds, groupId]);
-    setSelectedGroupId(groupId);
+    applyGroupSelection({
+      activeId: groupId,
+      selectedIds: [...selectedGroupIds, groupId],
+    });
   };
 
   const markGroupsViewed = async (anchorGroupId?: string) => {
@@ -280,8 +296,20 @@ export function useGalleryController() {
 
   useEffect(() => {
     const groupIds = new Set(groups.map((group) => group.id));
-    setSelectedGroupIds((prev) => prev.filter((groupId) => groupIds.has(groupId)));
-  }, [groups]);
+    const nextSelectedIds = selectedGroupIds.filter((groupId) =>
+      groupIds.has(groupId)
+    );
+    const nextActiveId =
+      selectedGroupId && groupIds.has(selectedGroupId)
+        ? selectedGroupId
+        : nextSelectedIds[0] ?? null;
+    if (
+      nextActiveId !== selectedGroupId ||
+      nextSelectedIds.length !== selectedGroupIds.length
+    ) {
+      applyGroupSelection({ activeId: nextActiveId, selectedIds: nextSelectedIds });
+    }
+  }, [groups, selectedGroupId, selectedGroupIds]);
 
   const goPrevGroup = () => {
     const currentIndex = groups.findIndex(
@@ -289,8 +317,7 @@ export function useGalleryController() {
     );
     if (currentIndex > 0) {
       const nextId = groups[currentIndex - 1].id;
-      setSelectedGroupId(nextId);
-      setSelectedGroupIds([nextId]);
+      applyGroupSelection({ activeId: nextId, selectedIds: [nextId] });
       return;
     }
     if (currentIndex === 0 && groupPage > 0) {
@@ -307,8 +334,7 @@ export function useGalleryController() {
     );
     if (currentIndex >= 0 && currentIndex < groups.length - 1) {
       const nextId = groups[currentIndex + 1].id;
-      setSelectedGroupId(nextId);
-      setSelectedGroupIds([nextId]);
+      applyGroupSelection({ activeId: nextId, selectedIds: [nextId] });
       return;
     }
     if (currentIndex === groups.length - 1 && groupPage + 1 < totalGroupPages) {
@@ -485,8 +511,7 @@ export function useGalleryController() {
   ) {
     if (!rootPath.trim()) {
       resetGroupList();
-      setSelectedGroupId(null);
-      setSelectedGroupIds([]);
+      applyGroupSelection({ activeId: null, selectedIds: [] });
       setImages([]);
       return;
     }
@@ -513,8 +538,10 @@ export function useGalleryController() {
       if (nextGroup === desiredGroupId && desiredImageIndex !== null) {
         resumeImageIndexRef.current = desiredImageIndex;
       }
-      setSelectedGroupId(nextGroup);
-      setSelectedGroupIds(nextGroup ? [nextGroup] : []);
+      applyGroupSelection({
+        activeId: nextGroup,
+        selectedIds: nextGroup ? [nextGroup] : [],
+      });
       pendingSelectionRef.current = { groupId: null, imageIndex: null };
     } catch (error) {
       setStatus(`Group refresh failed: ${String(error)}`);
@@ -646,8 +673,7 @@ export function useGalleryController() {
     if (groups.length === 0) return;
     const nextGroup = groups[Math.floor(Math.random() * groups.length)];
     suppressGroupFetchRef.current = true;
-    setSelectedGroupId(nextGroup.id);
-    setSelectedGroupIds([nextGroup.id]);
+    applyGroupSelection({ activeId: nextGroup.id, selectedIds: [nextGroup.id] });
     const result = await listImages(rootPath.trim(), nextGroup.id);
     setImages(result);
     if (result.length > 0) {
@@ -744,7 +770,6 @@ export function useGalleryController() {
     groupsPerPage,
     selectedGroupId,
     selectedGroupIds,
-    setSelectedGroupId,
     setGroupSelection,
     images,
     selectedImageIndex,
