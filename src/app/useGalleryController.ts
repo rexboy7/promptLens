@@ -190,6 +190,27 @@ export function useGalleryController() {
     await loadRatings(true);
   };
 
+  const deleteGroups = async (anchorGroupId?: string) => {
+    const targets = resolveActionGroupIds(anchorGroupId);
+    if (targets.length === 0) return;
+    const confirmed = await confirm(
+      targets.length > 1
+        ? `Delete all images in ${targets.length} selected categories?`
+        : "Delete all images in this category?",
+      {
+        title: "Delete Group",
+        kind: "warning",
+      }
+    );
+    if (!confirmed) return;
+    let deleted = 0;
+    for (const groupId of targets) {
+      deleted += await deleteGroup(rootPath.trim(), groupId);
+    }
+    setStatus(`Deleted ${deleted} images.`);
+    await refreshGroups();
+  };
+
   const getNextImageIndex = (groupId: string | null, items: ImageItem[]) => {
     if (!groupId || items.length === 0) return null;
     if (!imageBagRef.current || imageBagGroupRef.current !== groupId) {
@@ -665,23 +686,7 @@ export function useGalleryController() {
   }
 
   async function deleteCurrentGroup() {
-    const targets = resolveActionGroupIds();
-    if (targets.length === 0) return;
-    const confirmed = await confirm(
-      targets.length > 1
-        ? `Delete all images in ${targets.length} selected categories?`
-        : "Delete all images in this category?",
-      {
-      title: "Delete Group",
-      kind: "warning",
-    });
-    if (!confirmed) return;
-    let deleted = 0;
-    for (const groupId of targets) {
-      deleted += await deleteGroup(rootPath.trim(), groupId);
-    }
-    setStatus(`Deleted ${deleted} images.`);
-    await refreshGroups();
+    await deleteGroups();
   }
 
   const loadRatings = async (bumpVersion = false) => {
@@ -781,6 +786,7 @@ export function useGalleryController() {
     markGroupsViewed,
     markGroupsUnviewed,
     adjustGroupsRating,
+    deleteGroups,
     startRanking,
     stopRanking,
     goPrevGroup,

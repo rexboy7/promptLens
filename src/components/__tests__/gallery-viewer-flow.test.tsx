@@ -62,6 +62,7 @@ describe("gallery interaction flow", () => {
     const markGroupsViewed = vi.fn(async () => true);
     const markGroupsUnviewed = vi.fn(async () => true);
     const adjustGroupsRating = vi.fn(async () => true);
+    const deleteGroups = vi.fn(async () => true);
 
     galleryState = {
       groups,
@@ -92,6 +93,7 @@ describe("gallery interaction flow", () => {
       markGroupsViewed,
       markGroupsUnviewed,
       adjustGroupsRating,
+      deleteGroups,
       markGroupViewed: async () => true,
       markGroupUnviewed: async () => true,
       adjustGroupRating: async () => {},
@@ -271,5 +273,25 @@ describe("gallery interaction flow", () => {
     fireEvent.click(markViewedButton);
 
     expect(galleryState.markGroupsViewed).toHaveBeenCalledWith("p:2");
+  });
+
+  it("shows bulk delete action in context menu and dispatches delete", () => {
+    const { rerender } = render(<GroupList />);
+
+    const secondGroupButton = screen.getByText("ID: p:2").closest("button");
+    expect(secondGroupButton).not.toBeNull();
+    fireEvent.click(secondGroupButton as HTMLButtonElement, { ctrlKey: true });
+    rerender(<GroupList />);
+
+    fireEvent.contextMenu(secondGroupButton as HTMLButtonElement, {
+      clientX: 120,
+      clientY: 120,
+    });
+    rerender(<GroupList />);
+
+    const deleteButton = screen.getByRole("button", { name: "Delete 2 selected" });
+    fireEvent.click(deleteButton);
+
+    expect(galleryState.deleteGroups).toHaveBeenCalledWith("p:2");
   });
 });

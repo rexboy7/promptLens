@@ -22,6 +22,7 @@ export default function GroupList() {
     markGroupsViewed,
     markGroupsUnviewed,
     adjustGroupsRating,
+    deleteGroups,
   } = useGallery();
   const {
     menuId,
@@ -29,7 +30,7 @@ export default function GroupList() {
     openMenu,
     closeMenu,
     isOpen: isMenuOpen,
-  } = useContextMenu<string>({ width: 180, height: 164, padding: 8 });
+  } = useContextMenu<string>({ width: 180, height: 210, padding: 8 });
   const menuGroup = useMemo<Group | null>(() => {
     if (!menuId) return null;
     return groups.find((group) => group.id === menuId) ?? null;
@@ -184,6 +185,17 @@ export default function GroupList() {
             }}
           >
             Score down {contextTargetLabel}
+          </button>
+          <div className="group-context-divider" />
+          <button
+            type="button"
+            className="group-context-item"
+            onClick={() => {
+              void deleteGroups(menuGroup.id);
+              closeMenu();
+            }}
+          >
+            Delete {contextTargetLabel}
           </button>
         </div>
       )}
