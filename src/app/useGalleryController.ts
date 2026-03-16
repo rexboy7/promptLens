@@ -63,6 +63,7 @@ export function useGalleryController() {
   } = useGroupListController();
   const [selectedGroupId, setSelectedGroupId] =
     useLocalStorageOptionalString("promptlens.selectedGroupId");
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
   const [images, setImages] = useState<ImageItem[]>([]);
   const [selectedImageIndex, setSelectedImageIndex] =
     useLocalStorageOptionalNumber("promptlens.selectedImageIndex");
@@ -114,6 +115,78 @@ export function useGalleryController() {
     const current = ratingByGroupId[groupId]?.rating ?? 1000;
     const next = Math.round(current + delta);
     await setGroupRating({ rootPath: rootPath.trim(), groupId, rating: next });
+    await loadRatings(true);
+  };
+
+  const resolveActionGroupIds = (anchorGroupId?: string): string[] => {
+    if (
+      anchorGroupId &&
+      selectedGroupIds.includes(anchorGroupId) &&
+      selectedGroupIds.length > 0
+    ) {
+      return selectedGroupIds;
+    }
+    if (anchorGroupId) {
+      return [anchorGroupId];
+    }
+    if (selectedGroupIds.length > 0) {
+      return selectedGroupIds;
+    }
+    if (selectedGroupId) {
+      return [selectedGroupId];
+    }
+    return [];
+  };
+
+  const setGroupSelection = (groupId: string, multiSelect = false) => {
+    if (!multiSelect) {
+      setSelectedGroupId(groupId);
+      setSelectedGroupIds([groupId]);
+      return;
+    }
+
+    if (selectedGroupIds.includes(groupId)) {
+      const next = selectedGroupIds.filter((id) => id !== groupId);
+      setSelectedGroupIds(next);
+      if (selectedGroupId === groupId) {
+        setSelectedGroupId(next.length > 0 ? next[0] : null);
+      }
+      return;
+    }
+
+    setSelectedGroupIds([...selectedGroupIds, groupId]);
+    setSelectedGroupId(groupId);
+  };
+
+  const markGroupsViewed = async (anchorGroupId?: string) => {
+    const targets = resolveActionGroupIds(anchorGroupId);
+    if (targets.length === 0) return;
+    for (const groupId of targets) {
+      await markGroupViewed(groupId);
+    }
+  };
+
+  const markGroupsUnviewed = async (anchorGroupId?: string) => {
+    const targets = resolveActionGroupIds(anchorGroupId);
+    if (targets.length === 0) return;
+    for (const groupId of targets) {
+      await markGroupUnviewed(groupId);
+    }
+  };
+
+  const adjustGroupsRating = async (delta: number, anchorGroupId?: string) => {
+    const targets = resolveActionGroupIds(anchorGroupId);
+    const promptTargets = targets.filter((groupId) =>
+      groups.some(
+        (group) => group.id === groupId && group.group_type === "prompt"
+      )
+    );
+    if (promptTargets.length === 0) return;
+    for (const groupId of promptTargets) {
+      const current = ratingByGroupId[groupId]?.rating ?? 1000;
+      const next = Math.round(current + delta);
+      await setGroupRating({ rootPath: rootPath.trim(), groupId, rating: next });
+    }
     await loadRatings(true);
   };
 
@@ -184,12 +257,19 @@ export function useGalleryController() {
     }
   }, [selectedImageIndex, images]);
 
+  useEffect(() => {
+    const groupIds = new Set(groups.map((group) => group.id));
+    setSelectedGroupIds((prev) => prev.filter((groupId) => groupIds.has(groupId)));
+  }, [groups]);
+
   const goPrevGroup = () => {
     const currentIndex = groups.findIndex(
       (group) => group.id === selectedGroupId
     );
     if (currentIndex > 0) {
-      setSelectedGroupId(groups[currentIndex - 1].id);
+      const nextId = groups[currentIndex - 1].id;
+      setSelectedGroupId(nextId);
+      setSelectedGroupIds([nextId]);
       return;
     }
     if (currentIndex === 0 && groupPage > 0) {
@@ -205,7 +285,9 @@ export function useGalleryController() {
       (group) => group.id === selectedGroupId
     );
     if (currentIndex >= 0 && currentIndex < groups.length - 1) {
-      setSelectedGroupId(groups[currentIndex + 1].id);
+      const nextId = groups[currentIndex + 1].id;
+      setSelectedGroupId(nextId);
+      setSelectedGroupIds([nextId]);
       return;
     }
     if (currentIndex === groups.length - 1 && groupPage + 1 < totalGroupPages) {
@@ -278,24 +360,16 @@ export function useGalleryController() {
         toggleSlideshow({ acrossGroups: command.acrossGroups });
         break;
       case "MARK_GROUP_READ":
-        if (selectedGroupId) {
-          void markGroupViewed(selectedGroupId);
-        }
+        void markGroupsViewed();
         break;
       case "MARK_GROUP_UNREAD":
-        if (selectedGroupId) {
-          void markGroupUnviewed(selectedGroupId);
-        }
+        void markGroupsUnviewed();
         break;
       case "SCORE_UP":
-        if (selectedGroupId && selectedGroup?.group_type === "prompt") {
-          void adjustGroupRating(selectedGroupId, 40);
-        }
+        void adjustGroupsRating(40);
         break;
       case "SCORE_DOWN":
-        if (selectedGroupId && selectedGroup?.group_type === "prompt") {
-          void adjustGroupRating(selectedGroupId, -40);
-        }
+        void adjustGroupsRating(-40);
         break;
       case "DELETE_IMAGE":
         void deleteCurrentImage();
@@ -391,6 +465,7 @@ export function useGalleryController() {
     if (!rootPath.trim()) {
       resetGroupList();
       setSelectedGroupId(null);
+      setSelectedGroupIds([]);
       setImages([]);
       return;
     }
@@ -418,6 +493,7 @@ export function useGalleryController() {
         resumeImageIndexRef.current = desiredImageIndex;
       }
       setSelectedGroupId(nextGroup);
+      setSelectedGroupIds(nextGroup ? [nextGroup] : []);
       pendingSelectionRef.current = { groupId: null, imageIndex: null };
     } catch (error) {
       setStatus(`Group refresh failed: ${String(error)}`);
@@ -550,7 +626,8 @@ export function useGalleryController() {
     const nextGroup = groups[Math.floor(Math.random() * groups.length)];
     suppressGroupFetchRef.current = true;
     setSelectedGroupId(nextGroup.id);
-      const result = await listImages(rootPath.trim(), nextGroup.id);
+    setSelectedGroupIds([nextGroup.id]);
+    const result = await listImages(rootPath.trim(), nextGroup.id);
     setImages(result);
     if (result.length > 0) {
       const nextIndex = getNextImageIndex(nextGroup.id, result);
@@ -588,13 +665,21 @@ export function useGalleryController() {
   }
 
   async function deleteCurrentGroup() {
-    if (!selectedGroupId) return;
-    const confirmed = await confirm("Delete all images in this category?", {
+    const targets = resolveActionGroupIds();
+    if (targets.length === 0) return;
+    const confirmed = await confirm(
+      targets.length > 1
+        ? `Delete all images in ${targets.length} selected categories?`
+        : "Delete all images in this category?",
+      {
       title: "Delete Group",
       kind: "warning",
     });
     if (!confirmed) return;
-    const deleted = await deleteGroup(rootPath.trim(), selectedGroupId);
+    let deleted = 0;
+    for (const groupId of targets) {
+      deleted += await deleteGroup(rootPath.trim(), groupId);
+    }
     setStatus(`Deleted ${deleted} images.`);
     await refreshGroups();
   }
@@ -653,7 +738,9 @@ export function useGalleryController() {
     totalGroupPages,
     groupsPerPage,
     selectedGroupId,
+    selectedGroupIds,
     setSelectedGroupId,
+    setGroupSelection,
     images,
     selectedImageIndex,
     setSelectedImageIndex,
@@ -691,6 +778,9 @@ export function useGalleryController() {
     markGroupViewed,
     markGroupUnviewed,
     adjustGroupRating,
+    markGroupsViewed,
+    markGroupsUnviewed,
+    adjustGroupsRating,
     startRanking,
     stopRanking,
     goPrevGroup,

@@ -13,14 +13,15 @@ export default function GroupList() {
     totalGroupPages,
     goToGroupPage,
     selectedGroupId,
+    selectedGroupIds,
     groupRefs,
     truncateLabel,
-    setSelectedGroupId,
+    setGroupSelection,
     ratingByGroupId,
     viewedGroupIds,
-    markGroupViewed,
-    markGroupUnviewed,
-    adjustGroupRating,
+    markGroupsViewed,
+    markGroupsUnviewed,
+    adjustGroupsRating,
   } = useGallery();
   const {
     menuId,
@@ -38,6 +39,15 @@ export default function GroupList() {
   const paginationItems = usePagination(groupPage, totalGroupPages);
   const canGoPrev = groupPage > 0;
   const canGoNext = groupPage + 1 < totalGroupPages;
+  const isSelected = (groupId: string) => selectedGroupIds.includes(groupId);
+  const contextTargetIds =
+    menuGroup && selectedGroupIds.includes(menuGroup.id) && selectedGroupIds.length > 0
+      ? selectedGroupIds
+      : menuGroup
+      ? [menuGroup.id]
+      : [];
+  const contextTargetLabel =
+    contextTargetIds.length > 1 ? `${contextTargetIds.length} selected` : "this";
 
   return (
     <aside className="group-list">
@@ -94,6 +104,7 @@ export default function GroupList() {
             className={[
               "group",
               group.id === selectedGroupId ? "active" : "",
+              isSelected(group.id) ? "selected" : "",
               viewed ? "viewed" : "",
             ]
               .filter(Boolean)
@@ -101,7 +112,10 @@ export default function GroupList() {
             ref={(node) => {
               groupRefs.current[group.id] = node;
             }}
-            onClick={() => setSelectedGroupId(group.id)}
+            onClick={(event) => {
+              const multiSelect = event.metaKey || event.ctrlKey;
+              setGroupSelection(group.id, multiSelect);
+            }}
             onContextMenu={(event: MouseEvent) => openMenu(event, group.id)}
           >
             <img src={thumbSrc} alt={`Group ${group.id}`} />
@@ -126,44 +140,50 @@ export default function GroupList() {
             type="button"
             className="group-context-item"
             onClick={() => {
-              void markGroupViewed(menuGroup.id);
+              void markGroupsViewed(menuGroup.id);
               closeMenu();
             }}
           >
-            Mark viewed
+            Mark {contextTargetLabel} viewed
           </button>
           <button
             type="button"
             className="group-context-item"
             onClick={() => {
-              void markGroupUnviewed(menuGroup.id);
+              void markGroupsUnviewed(menuGroup.id);
               closeMenu();
             }}
           >
-            Mark unread
+            Mark {contextTargetLabel} unread
           </button>
           <div className="group-context-divider" />
           <button
             type="button"
             className="group-context-item"
-            disabled={menuGroup.group_type !== "prompt"}
+            disabled={!contextTargetIds.some((groupId) => {
+              const group = groups.find((entry) => entry.id === groupId);
+              return group?.group_type === "prompt";
+            })}
             onClick={() => {
-              void adjustGroupRating(menuGroup.id, 40);
+              void adjustGroupsRating(40, menuGroup.id);
               closeMenu();
             }}
           >
-            Score up
+            Score up {contextTargetLabel}
           </button>
           <button
             type="button"
             className="group-context-item"
-            disabled={menuGroup.group_type !== "prompt"}
+            disabled={!contextTargetIds.some((groupId) => {
+              const group = groups.find((entry) => entry.id === groupId);
+              return group?.group_type === "prompt";
+            })}
             onClick={() => {
-              void adjustGroupRating(menuGroup.id, -40);
+              void adjustGroupsRating(-40, menuGroup.id);
               closeMenu();
             }}
           >
-            Score down
+            Score down {contextTargetLabel}
           </button>
         </div>
       )}

@@ -24,6 +24,7 @@ export default function Toolbar() {
     hasImages,
     hasGroups,
     selectedGroupId,
+    selectedGroupIds,
     isFullscreen,
     randomImageInGroup,
     randomCategoryImage,
@@ -38,7 +39,8 @@ export default function Toolbar() {
     openViewer,
     stopSlideshowAndCloseViewer,
   } = useGallery();
-  const hasSelectedGroup = Boolean(selectedGroupId);
+  const selectedGroupCount = selectedGroupIds.length;
+  const hasSelectedGroup = selectedGroupCount > 0 || Boolean(selectedGroupId);
   return (
     <section className="toolbar ribbon">
       <div className="toolbar-actions">
@@ -156,7 +158,11 @@ export default function Toolbar() {
           type="button"
           onClick={() => void deleteCurrentGroup()}
           disabled={!hasSelectedGroup}
-          title={`Delete category (${primaryKey}+${secondaryKey}+D)`}
+          title={
+            selectedGroupCount > 1
+              ? `Delete selected categories (${primaryKey}+${secondaryKey}+D)`
+              : `Delete category (${primaryKey}+${secondaryKey}+D)`
+          }
           className="icon-button danger"
         >
           <img src={deleteGroupIcon} alt="" aria-hidden="true" />

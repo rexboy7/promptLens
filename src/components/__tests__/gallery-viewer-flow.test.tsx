@@ -65,10 +65,19 @@ describe("gallery interaction flow", () => {
       totalGroupPages: 1,
       goToGroupPage: () => {},
       selectedGroupId: "p:1",
+      selectedGroupIds: ["p:1"],
       groupRefs: { current: {} as Record<string, HTMLButtonElement | null> },
       truncateLabel: (label: string) => label,
-      setSelectedGroupId: (groupId: string) => {
-        galleryState.selectedGroupId = groupId;
+      setGroupSelection: (groupId: string, multiSelect = false) => {
+        if (multiSelect) {
+          galleryState.selectedGroupId = groupId;
+          galleryState.selectedGroupIds = Array.from(
+            new Set([...galleryState.selectedGroupIds, groupId])
+          );
+        } else {
+          galleryState.selectedGroupId = groupId;
+          galleryState.selectedGroupIds = [groupId];
+        }
         syncSelectedGroup();
         galleryState.images = imagesByGroup[groupId] ?? [];
         galleryState.selectedImageIndex = galleryState.images.length > 0 ? 0 : null;
@@ -76,6 +85,9 @@ describe("gallery interaction flow", () => {
       },
       ratingByGroupId: {},
       viewedGroupIds: [],
+      markGroupsViewed: async () => true,
+      markGroupsUnviewed: async () => true,
+      adjustGroupsRating: async () => {},
       markGroupViewed: async () => true,
       markGroupUnviewed: async () => true,
       adjustGroupRating: async () => {},
@@ -157,6 +169,7 @@ describe("gallery interaction flow", () => {
       },
     ];
     galleryState.selectedGroupId = "p:multi";
+    galleryState.selectedGroupIds = ["p:multi"];
     galleryState.selectedGroup = galleryState.groups[0];
     galleryState.images = [
       { path: "/tmp/31-3001.png", serial: 31, seed: 3001 },
@@ -196,6 +209,7 @@ describe("gallery interaction flow", () => {
     galleryState.groups = [];
     galleryState.images = [];
     galleryState.selectedGroupId = null;
+    galleryState.selectedGroupIds = [];
     galleryState.selectedGroup = null;
     galleryState.selectedImageIndex = null;
     galleryState.viewerOpen = false;
@@ -220,5 +234,16 @@ describe("gallery interaction flow", () => {
     expect(goToGroupPage).toHaveBeenCalledWith(0);
     expect(goToGroupPage).toHaveBeenCalledWith(2);
     expect(goToGroupPage).toHaveBeenCalledTimes(3);
+  });
+
+  it("supports ctrl/cmd multi-select in group list", () => {
+    const { rerender } = render(<GroupList />);
+
+    const targetGroupButton = screen.getByText("ID: p:2").closest("button");
+    expect(targetGroupButton).not.toBeNull();
+    fireEvent.click(targetGroupButton as HTMLButtonElement, { ctrlKey: true });
+    rerender(<GroupList />);
+
+    expect(galleryState.selectedGroupIds).toEqual(["p:1", "p:2"]);
   });
 });
