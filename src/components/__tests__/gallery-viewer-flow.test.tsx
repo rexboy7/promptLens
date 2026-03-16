@@ -204,4 +204,21 @@ describe("gallery interaction flow", () => {
     expect(screen.getByText("No groups yet. Choose a folder.")).toBeInTheDocument();
     expect(screen.getByText("Select a group to view images.")).toBeInTheDocument();
   });
+
+  it("invokes pagination callbacks when navigating group pages", () => {
+    const goToGroupPage = vi.fn();
+    galleryState.groupPage = 1;
+    galleryState.totalGroupPages = 3;
+    galleryState.goToGroupPage = goToGroupPage;
+
+    render(<GroupList />);
+
+    fireEvent.click(screen.getByRole("button", { name: "<" }));
+    fireEvent.click(screen.getByRole("button", { name: ">" }));
+    fireEvent.click(screen.getByRole("button", { name: "3" }));
+
+    expect(goToGroupPage).toHaveBeenCalledWith(0);
+    expect(goToGroupPage).toHaveBeenCalledWith(2);
+    expect(goToGroupPage).toHaveBeenCalledTimes(3);
+  });
 });
