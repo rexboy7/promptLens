@@ -797,13 +797,8 @@ mod tests {
     fn extract_date_folder_path_uses_last_date_segment_folder() {
         let path = Path::new("/tmp/2025-01-01/archive/2026-03-16/00001-1.png");
         let folder = extract_date_folder_path(path);
-        assert_eq!(
-            folder
-                .as_ref()
-                .map(|value| value.to_string_lossy().to_string())
-                .as_deref(),
-            Some("/tmp/2025-01-01/archive/2026-03-16")
-        );
+        let expected = Path::new("/tmp/2025-01-01/archive/2026-03-16");
+        assert_eq!(folder.as_deref(), Some(expected));
     }
 
     #[test]
