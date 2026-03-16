@@ -8,6 +8,11 @@ import { useContextMenu } from "../../hooks/useContextMenu";
 export default function GroupList() {
   const {
     groups,
+    groupPage,
+    groupsPerPage,
+    hasPrevGroupPage,
+    hasNextGroupPage,
+    goToGroupPage,
     selectedGroupId,
     groupRefs,
     truncateLabel,
@@ -34,6 +39,27 @@ export default function GroupList() {
 
   return (
     <aside className="group-list">
+      <div className="group-list-pagination">
+        <button
+          type="button"
+          className="group-page-button"
+          disabled={!hasPrevGroupPage}
+          onClick={() => goToGroupPage(groupPage - 1)}
+        >
+          Prev
+        </button>
+        <span className="group-page-label">
+          Page {groupPage + 1} • {groupsPerPage} / page
+        </span>
+        <button
+          type="button"
+          className="group-page-button"
+          disabled={!hasNextGroupPage}
+          onClick={() => goToGroupPage(groupPage + 1)}
+        >
+          Next
+        </button>
+      </div>
       {groups.map((group) => {
         const thumbSrc = convertFileSrc(group.representative_path);
         const displayLabel = truncateLabel(group.label, 120);

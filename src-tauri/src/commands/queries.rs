@@ -10,6 +10,8 @@ pub fn list_groups(
     date_filter: Option<String>,
     search_text: Option<String>,
     group_mode: Option<String>,
+    limit: Option<i64>,
+    offset: Option<i64>,
 ) -> Result<Vec<GroupItem>, String> {
     let conn = open_db(&app, &root_path)?;
     init_db(&conn)?;
@@ -70,10 +72,8 @@ pub fn list_groups(
             String::new()
         };
 
-        let mut stmt = conn
-            .prepare(
-                &format!(
-                    r#"
+        let mut query = format!(
+            r#"
                 SELECT group_type, group_id, label, date, size, representative_path
                 FROM (
                     {}
@@ -97,17 +97,15 @@ pub fn list_groups(
                 )
                 ORDER BY date DESC, sort_mtime DESC, label DESC
                 "#,
-                    prompt_query,
-                    batch_search = batch_search_clause
-                ),
-            )
-            .map_err(|e| e.to_string())?;
+            prompt_query,
+            batch_search = batch_search_clause
+        );
 
         let date_value = date_filter
             .as_ref()
             .map(|value| Value::from(value.clone()))
             .unwrap_or(Value::Null);
-        let params_vec = if search.is_none() {
+        let mut params_vec = if search.is_none() {
             vec![date_value.clone()]
         } else if use_fts {
             vec![
@@ -118,6 +116,19 @@ pub fn list_groups(
         } else {
             vec![date_value.clone(), Value::from(search_like.clone())]
         };
+        if let Some(limit_value) = limit {
+            let offset_value = offset.unwrap_or(0).max(0);
+            let limit_param_index = params_vec.len() + 1;
+            let offset_param_index = params_vec.len() + 2;
+            query.push_str(&format!(
+                " LIMIT ?{} OFFSET ?{}",
+                limit_param_index, offset_param_index
+            ));
+            params_vec.push(Value::from(limit_value.max(0)));
+            params_vec.push(Value::from(offset_value));
+        }
+
+        let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
 
         let rows = stmt
             .query_map(rusqlite::params_from_iter(params_vec), |row| {
@@ -196,10 +207,8 @@ pub fn list_groups(
     } else {
         String::new()
     };
-    let mut stmt = conn
-        .prepare(
-            &format!(
-                r#"
+    let mut query = format!(
+        r#"
             SELECT group_type, group_id, label, date, size, representative_path
             FROM (
                 {}
@@ -223,18 +232,16 @@ pub fn list_groups(
             )
             {}
             "#,
-                prompt_query,
-                order_clause,
-                batch_search = batch_search_clause
-            ),
-        )
-        .map_err(|e| e.to_string())?;
+        prompt_query,
+        order_clause,
+        batch_search = batch_search_clause
+    );
 
     let date_value = date_filter
         .as_ref()
         .map(|value| Value::from(value.clone()))
         .unwrap_or(Value::Null);
-    let params_vec = if search.is_none() {
+    let mut params_vec = if search.is_none() {
         vec![date_value.clone()]
     } else if use_fts {
         vec![
@@ -245,6 +252,19 @@ pub fn list_groups(
     } else {
         vec![date_value.clone(), Value::from(search_like.clone())]
     };
+    if let Some(limit_value) = limit {
+        let offset_value = offset.unwrap_or(0).max(0);
+        let limit_param_index = params_vec.len() + 1;
+        let offset_param_index = params_vec.len() + 2;
+        query.push_str(&format!(
+            " LIMIT ?{} OFFSET ?{}",
+            limit_param_index, offset_param_index
+        ));
+        params_vec.push(Value::from(limit_value.max(0)));
+        params_vec.push(Value::from(offset_value));
+    }
+
+    let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
 
     let rows = stmt
         .query_map(rusqlite::params_from_iter(params_vec), |row| {

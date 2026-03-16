@@ -24,12 +24,16 @@ export async function listGroups(params: {
   dateFilter?: string | null;
   searchText?: string | null;
   groupMode: GroupMode;
+  limit?: number | null;
+  offset?: number | null;
 }): Promise<Group[]> {
   return invoke<Group[]>("list_groups", {
     rootPath: params.rootPath,
     dateFilter: params.dateFilter ?? null,
     searchText: params.searchText ?? null,
     groupMode: params.groupMode,
+    limit: params.limit ?? null,
+    offset: params.offset ?? null,
   });
 }
 

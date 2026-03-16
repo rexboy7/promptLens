@@ -33,6 +33,9 @@ import type {
 import { useViewedGroups } from "./useViewedGroups";
 import { ShuffleBag } from "../utils/shuffleBag";
 
+const GROUPS_PER_PAGE = 200;
+const GROUP_FETCH_SIZE = GROUPS_PER_PAGE + 1;
+
 export function useGalleryController() {
   const [rootPath, setRootPath] = useState("");
   const [dateFilter, setDateFilter] = useLocalStorageString(
@@ -49,6 +52,8 @@ export function useGalleryController() {
     "prompt"
   );
   const [groups, setGroups] = useState<Group[]>([]);
+  const [groupPage, setGroupPage] = useState(0);
+  const [hasNextGroupPage, setHasNextGroupPage] = useState(false);
   const [selectedGroupId, setSelectedGroupId] =
     useLocalStorageOptionalString("promptlens.selectedGroupId");
   const [images, setImages] = useState<ImageItem[]>([]);
@@ -178,6 +183,13 @@ export function useGalleryController() {
     );
     if (currentIndex > 0) {
       setSelectedGroupId(groups[currentIndex - 1].id);
+      return;
+    }
+    if (currentIndex === 0 && groupPage > 0) {
+      const prevPage = groupPage - 1;
+      pendingSelectionRef.current = { groupId: null, imageIndex: null };
+      setGroupPage(prevPage);
+      void refreshGroups(groupMode, prevPage);
     }
   };
 
@@ -187,6 +199,13 @@ export function useGalleryController() {
     );
     if (currentIndex >= 0 && currentIndex < groups.length - 1) {
       setSelectedGroupId(groups[currentIndex + 1].id);
+      return;
+    }
+    if (currentIndex === groups.length - 1 && hasNextGroupPage) {
+      const nextPage = groupPage + 1;
+      pendingSelectionRef.current = { groupId: null, imageIndex: null };
+      setGroupPage(nextPage);
+      void refreshGroups(groupMode, nextPage);
     }
   };
 
@@ -358,14 +377,23 @@ export function useGalleryController() {
     setRecentRoots(next);
   }
 
-  async function refreshGroups(nextMode: GroupMode = groupMode) {
+  async function refreshGroups(
+    nextMode: GroupMode = groupMode,
+    pageOverride?: number
+  ) {
     if (!rootPath.trim()) {
       setGroups([]);
+      setGroupPage(0);
+      setHasNextGroupPage(false);
       setSelectedGroupId(null);
       setImages([]);
       return;
     }
     try {
+      const requestedPage = Math.max(
+        0,
+        pageOverride ?? (nextMode === groupMode ? groupPage : 0)
+      );
       const desiredGroupId =
         pendingSelectionRef.current.groupId ?? selectedGroupId;
       const desiredImageIndex =
@@ -375,13 +403,18 @@ export function useGalleryController() {
         dateFilter: dateFilter.trim() ? dateFilter.trim() : null,
         searchText: searchText.trim() ? searchText.trim() : null,
         groupMode: nextMode,
+        limit: GROUP_FETCH_SIZE,
+        offset: requestedPage * GROUPS_PER_PAGE,
       });
-      setGroups(result);
+      const pageItems = result.slice(0, GROUPS_PER_PAGE);
+      setGroups(pageItems);
+      setHasNextGroupPage(result.length > GROUPS_PER_PAGE);
+      setGroupPage(requestedPage);
       const nextGroup =
-        desiredGroupId && result.some((group) => group.id === desiredGroupId)
+        desiredGroupId && pageItems.some((group) => group.id === desiredGroupId)
           ? desiredGroupId
-          : result.length > 0
-          ? result[0].id
+          : pageItems.length > 0
+          ? pageItems[0].id
           : null;
       if (nextGroup === desiredGroupId && desiredImageIndex !== null) {
         resumeImageIndexRef.current = desiredImageIndex;
@@ -396,6 +429,13 @@ export function useGalleryController() {
   useEffect(() => {
     refreshGroupsRef.current = refreshGroups;
   }, [refreshGroups]);
+
+  function goToGroupPage(nextPage: number) {
+    if (nextPage < 0) return;
+    pendingSelectionRef.current = { groupId: null, imageIndex: null };
+    setGroupPage(nextPage);
+    void refreshGroups(groupMode, nextPage);
+  }
 
   async function scanDirectoryAction() {
     const trimmed = rootPath.trim();
@@ -465,11 +505,13 @@ export function useGalleryController() {
       title: "Select image root folder",
     });
     if (typeof selection === "string") {
+      setGroupPage(0);
       setRootPath(selection);
     }
   }
 
   function handleRootChange(value: string) {
+    setGroupPage(0);
     setRootPath(value);
   }
 
@@ -606,6 +648,10 @@ export function useGalleryController() {
     groupMode,
     setGroupMode,
     groups,
+    groupPage,
+    groupsPerPage: GROUPS_PER_PAGE,
+    hasPrevGroupPage: groupPage > 0,
+    hasNextGroupPage,
     selectedGroupId,
     setSelectedGroupId,
     images,
@@ -626,6 +672,7 @@ export function useGalleryController() {
     hasGroups,
     truncateLabel,
     refreshGroups,
+    goToGroupPage,
     scanDirectoryAction,
     browseForRoot,
     handleRootChange,

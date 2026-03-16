@@ -144,6 +144,34 @@ button:hover {
   min-height: 0;
 }
 
+.group-list-pagination {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 6px 0;
+  background: rgba(243, 239, 233, 0.92);
+  backdrop-filter: blur(2px);
+}
+
+.group-page-button {
+  padding: 6px 10px;
+  font-size: 0.78rem;
+}
+
+.group-page-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.group-page-label {
+  font-size: 0.78rem;
+  color: #6a5d54;
+}
+
 .group {
   display: flex;
   gap: 12px;
@@ -443,6 +471,12 @@ button:hover {
   .group-list {
     flex-direction: row;
     overflow-x: auto;
+  }
+
+  .group-list-pagination {
+    position: static;
+    min-width: fit-content;
+    padding-right: 4px;
   }
 
   .group {

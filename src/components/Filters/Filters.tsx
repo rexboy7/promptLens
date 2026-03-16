@@ -24,7 +24,7 @@ export default function Filters() {
         onChange={(event) => setDateFilter(event.currentTarget.value)}
         placeholder="Date filter YYYY-MM-DD"
       />
-      <button type="button" onClick={() => refreshGroups()}>
+      <button type="button" onClick={() => refreshGroups(groupMode, 0)}>
         Apply
       </button>
       <div className="mode-toggle">
@@ -33,7 +33,7 @@ export default function Filters() {
           className={groupMode === "prompt" ? "mode active" : "mode"}
           onClick={() => {
             setGroupMode("prompt");
-            void refreshGroups("prompt");
+            void refreshGroups("prompt", 0);
           }}
         >
           Prompt
@@ -43,7 +43,7 @@ export default function Filters() {
           className={groupMode === "date" ? "mode active" : "mode"}
           onClick={() => {
             setGroupMode("date");
-            void refreshGroups("date");
+            void refreshGroups("date", 0);
           }}
         >
           Date
@@ -53,7 +53,7 @@ export default function Filters() {
           className={groupMode === "score" ? "mode active" : "mode"}
           onClick={() => {
             setGroupMode("score");
-            void refreshGroups("score");
+            void refreshGroups("score", 0);
           }}
         >
           Score
