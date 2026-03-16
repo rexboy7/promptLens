@@ -3,63 +3,12 @@ use crate::types::RatingItem;
 use rusqlite::params;
 use tauri::AppHandle;
 
-#[tauri::command]
-pub fn get_ratings(
-    app: AppHandle,
-    root_path: String,
-    group_ids: Vec<String>,
-) -> Result<Vec<RatingItem>, String> {
-    let mut conn = open_db(&app, &root_path)?;
-    init_db(&conn)?;
-
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
-    let mut lookup_ids: Vec<Option<String>> = Vec::with_capacity(group_ids.len());
-    for id in &group_ids {
-        let lookup = if id.starts_with("b:") || id.starts_with("d:") {
-            lookup_ids.push(None);
-            continue;
-        } else {
-            id.clone()
-        };
-        tx.execute(
-            "INSERT OR IGNORE INTO ratings (group_id, rating, matches) VALUES (?1, 1000.0, 0)",
-            params![lookup],
-        )
-        .map_err(|e| e.to_string())?;
-        lookup_ids.push(Some(lookup));
-    }
-    tx.commit().map_err(|e| e.to_string())?;
-
-    let mut stmt = conn
-        .prepare("SELECT group_id, rating, matches FROM ratings WHERE group_id = ?1")
-        .map_err(|e| e.to_string())?;
-    let mut results = Vec::new();
-    for (id, lookup) in group_ids.into_iter().zip(lookup_ids.into_iter()) {
-        let Some(lookup) = lookup else { continue; };
-        if let Ok(item) = stmt.query_row(params![lookup], |row| {
-            Ok(RatingItem {
-                group_id: id.clone(),
-                rating: row.get(1)?,
-                matches: row.get(2)?,
-            })
-        }) {
-            results.push(item);
-        }
-    }
-    Ok(results)
-}
-
-#[tauri::command]
-pub fn submit_comparison(
-    app: AppHandle,
-    root_path: String,
-    left_id: String,
-    right_id: String,
-    winner_id: String,
+fn submit_comparison_with_conn(
+    conn: &mut rusqlite::Connection,
+    left_id: &str,
+    right_id: &str,
+    winner_id: &str,
 ) -> Result<bool, String> {
-    let mut conn = open_db(&app, &root_path)?;
-    init_db(&conn)?;
-
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     tx.execute(
         "INSERT OR IGNORE INTO ratings (group_id, rating, matches) VALUES (?1, 1000.0, 0)",
@@ -128,6 +77,65 @@ pub fn submit_comparison(
 
     tx.commit().map_err(|e| e.to_string())?;
     Ok(true)
+}
+
+#[tauri::command]
+pub fn get_ratings(
+    app: AppHandle,
+    root_path: String,
+    group_ids: Vec<String>,
+) -> Result<Vec<RatingItem>, String> {
+    let mut conn = open_db(&app, &root_path)?;
+    init_db(&conn)?;
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let mut lookup_ids: Vec<Option<String>> = Vec::with_capacity(group_ids.len());
+    for id in &group_ids {
+        let lookup = if id.starts_with("b:") || id.starts_with("d:") {
+            lookup_ids.push(None);
+            continue;
+        } else {
+            id.clone()
+        };
+        tx.execute(
+            "INSERT OR IGNORE INTO ratings (group_id, rating, matches) VALUES (?1, 1000.0, 0)",
+            params![lookup],
+        )
+        .map_err(|e| e.to_string())?;
+        lookup_ids.push(Some(lookup));
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare("SELECT group_id, rating, matches FROM ratings WHERE group_id = ?1")
+        .map_err(|e| e.to_string())?;
+    let mut results = Vec::new();
+    for (id, lookup) in group_ids.into_iter().zip(lookup_ids.into_iter()) {
+        let Some(lookup) = lookup else { continue; };
+        if let Ok(item) = stmt.query_row(params![lookup], |row| {
+            Ok(RatingItem {
+                group_id: id.clone(),
+                rating: row.get(1)?,
+                matches: row.get(2)?,
+            })
+        }) {
+            results.push(item);
+        }
+    }
+    Ok(results)
+}
+
+#[tauri::command]
+pub fn submit_comparison(
+    app: AppHandle,
+    root_path: String,
+    left_id: String,
+    right_id: String,
+    winner_id: String,
+) -> Result<bool, String> {
+    let mut conn = open_db(&app, &root_path)?;
+    init_db(&conn)?;
+    submit_comparison_with_conn(&mut conn, &left_id, &right_id, &winner_id)
 }
 
 #[tauri::command]
@@ -203,4 +211,73 @@ pub fn get_rating_percentiles(
     }
 
     Ok(results)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::submit_comparison_with_conn;
+    use crate::db::init_db;
+    use rusqlite::{params, Connection};
+
+    fn fetch_rating(conn: &Connection, group_id: &str) -> (f64, i64) {
+        conn.query_row(
+            "SELECT rating, matches FROM ratings WHERE group_id = ?1",
+            params![group_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("failed to fetch rating row")
+    }
+
+    #[test]
+    fn submit_comparison_winner_updates_ratings_and_matches() {
+        let mut conn = Connection::open_in_memory().expect("failed to open sqlite in-memory db");
+        init_db(&conn).expect("failed to initialize db");
+
+        submit_comparison_with_conn(&mut conn, "p:left", "p:right", "p:left")
+            .expect("submit comparison failed");
+
+        let (left_rating, left_matches) = fetch_rating(&conn, "p:left");
+        let (right_rating, right_matches) = fetch_rating(&conn, "p:right");
+        assert_eq!(left_rating, 1012.0);
+        assert_eq!(right_rating, 988.0);
+        assert_eq!(left_matches, 1);
+        assert_eq!(right_matches, 1);
+
+        let comparison_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM comparisons", [], |row| row.get(0))
+            .expect("failed to count comparisons");
+        assert_eq!(comparison_count, 1);
+    }
+
+    #[test]
+    fn submit_comparison_both_good_applies_positive_bonus() {
+        let mut conn = Connection::open_in_memory().expect("failed to open sqlite in-memory db");
+        init_db(&conn).expect("failed to initialize db");
+
+        submit_comparison_with_conn(&mut conn, "p:left", "p:right", "both_good")
+            .expect("submit comparison failed");
+
+        let (left_rating, left_matches) = fetch_rating(&conn, "p:left");
+        let (right_rating, right_matches) = fetch_rating(&conn, "p:right");
+        assert_eq!(left_rating, 1004.0);
+        assert_eq!(right_rating, 1004.0);
+        assert_eq!(left_matches, 1);
+        assert_eq!(right_matches, 1);
+    }
+
+    #[test]
+    fn submit_comparison_both_bad_applies_negative_bonus() {
+        let mut conn = Connection::open_in_memory().expect("failed to open sqlite in-memory db");
+        init_db(&conn).expect("failed to initialize db");
+
+        submit_comparison_with_conn(&mut conn, "p:left", "p:right", "both_bad")
+            .expect("submit comparison failed");
+
+        let (left_rating, left_matches) = fetch_rating(&conn, "p:left");
+        let (right_rating, right_matches) = fetch_rating(&conn, "p:right");
+        assert_eq!(left_rating, 996.0);
+        assert_eq!(right_rating, 996.0);
+        assert_eq!(left_matches, 1);
+        assert_eq!(right_matches, 1);
+    }
 }
