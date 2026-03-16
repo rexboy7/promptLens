@@ -457,3 +457,96 @@ pub fn start_scan(
 
     Ok(ScanStartResponse { scan_id })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{build_index, extract_date_from_path, parse_filename};
+    use crate::db::init_db;
+    use rusqlite::Connection;
+    use std::fs::{self, File};
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn create_test_root() -> PathBuf {
+        let mut path = std::env::temp_dir();
+        let unique = format!(
+            "promptlens-indexer-tests-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock before unix epoch")
+                .as_nanos()
+        );
+        path.push(unique);
+        fs::create_dir_all(&path).expect("failed to create test root");
+        path
+    }
+
+    fn touch_file(path: &Path) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("failed to create parent directory");
+        }
+        File::create(path).expect("failed to create test file");
+    }
+
+    #[test]
+    fn parse_filename_accepts_serial_seed_png() {
+        let path = Path::new("00123-987654321.png");
+        let parsed = parse_filename(path);
+        assert_eq!(parsed, Some((123, 987654321)));
+    }
+
+    #[test]
+    fn extract_date_from_path_uses_last_date_segment() {
+        let path = Path::new("/tmp/2025-01-01/archive/2026-03-16/00001-1.png");
+        let date = extract_date_from_path(path);
+        assert_eq!(date.as_deref(), Some("2026-03-16"));
+    }
+
+    #[test]
+    fn build_index_splits_batches_on_sequence_break() {
+        let root = create_test_root();
+        let date_dir = root.join("images").join("2026-03-16");
+        touch_file(&date_dir.join("00001-100.png"));
+        touch_file(&date_dir.join("00002-101.png"));
+        touch_file(&date_dir.join("00004-103.png"));
+
+        let mut conn = Connection::open_in_memory().expect("failed to open sqlite in-memory db");
+        init_db(&conn).expect("failed to initialize db");
+        let mut no_progress = |_: usize, _: usize| {};
+
+        let result = build_index(
+            &mut conn,
+            root.to_str().expect("non-utf8 temp path"),
+            3,
+            &mut no_progress,
+        )
+        .expect("build_index failed");
+
+        assert_eq!(result.total_images, 3);
+        assert_eq!(result.total_batches, 2);
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT first_serial, last_serial, first_seed, last_seed FROM batches ORDER BY id ASC",
+            )
+            .expect("failed to prepare query");
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, i64>(3)?,
+                ))
+            })
+            .expect("failed to query batches");
+        let batches: Vec<(i64, i64, i64, i64)> = rows
+            .map(|row| row.expect("failed to parse row"))
+            .collect();
+
+        assert_eq!(batches, vec![(1, 2, 100, 101), (4, 4, 103, 103)]);
+
+        fs::remove_dir_all(root).expect("failed to remove temp test root");
+    }
+}

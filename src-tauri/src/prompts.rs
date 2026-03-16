@@ -148,3 +148,22 @@ pub fn extract_prompts_for_unparsed(conn: &mut Connection) -> Result<(), String>
     tx.commit().map_err(|e| e.to_string())?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::extract_positive_prompt;
+
+    #[test]
+    fn extract_positive_prompt_strips_negative_section() {
+        let raw = "masterpiece, portrait, Negative prompt: blurry, lowres";
+        let result = extract_positive_prompt(raw);
+        assert_eq!(result, "masterpiece, portrait");
+    }
+
+    #[test]
+    fn extract_positive_prompt_trims_trailing_comma_and_spaces() {
+        let raw = "  cinematic lighting, detailed,   ";
+        let result = extract_positive_prompt(raw);
+        assert_eq!(result, "cinematic lighting, detailed");
+    }
+}
