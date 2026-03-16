@@ -748,15 +748,20 @@ mod tests {
     };
     use crate::db::init_db;
     use rusqlite::{params, Connection};
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::fs::{self, File};
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    static TEST_ROOT_COUNTER: AtomicU64 = AtomicU64::new(0);
+
     fn create_test_root() -> PathBuf {
         let mut path = std::env::temp_dir();
+        let counter = TEST_ROOT_COUNTER.fetch_add(1, Ordering::Relaxed);
         let unique = format!(
-            "promptlens-indexer-tests-{}-{}",
+            "promptlens-indexer-tests-{}-{}-{}",
             std::process::id(),
+            counter,
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("system clock before unix epoch")
