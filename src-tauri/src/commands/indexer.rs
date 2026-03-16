@@ -2,13 +2,18 @@ use crate::db::{init_db, open_db};
 use crate::prompts::extract_prompts_for_unparsed;
 use crate::types::{ScanProgressEvent, ScanResult, ScanStartResponse};
 use rusqlite::{params, Connection};
-use std::sync::{Arc, Mutex};
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, State};
 use walkdir::WalkDir;
+
+#[cfg(test)]
+const LARGE_FOLDER_FILE_THRESHOLD: i64 = 3;
+#[cfg(not(test))]
+const LARGE_FOLDER_FILE_THRESHOLD: i64 = 2000;
 
 #[derive(Clone)]
 struct ImageMeta {
@@ -26,6 +31,20 @@ struct DbImageRow {
     seed: i64,
     mtime: i64,
     prompt_id: Option<i64>,
+}
+
+#[derive(Clone, Debug)]
+struct ScanFolderState {
+    file_count: i64,
+    dir_mtime: i64,
+}
+
+#[derive(Clone, Debug)]
+struct ScanFolderMetrics {
+    file_count: i64,
+    max_serial: i64,
+    max_seed: i64,
+    dir_mtime: i64,
 }
 
 #[derive(Clone)]
@@ -96,6 +115,32 @@ fn parse_filename(path: &Path) -> Option<(i64, i64)> {
     Some((serial, seed))
 }
 
+fn extract_date_folder_path(path: &Path) -> Option<PathBuf> {
+    let mut result = PathBuf::new();
+    let mut latest_date_path: Option<PathBuf> = None;
+    for component in path.components() {
+        result.push(component.as_os_str());
+        if let Some(segment) = component.as_os_str().to_str() {
+            if is_date_segment(segment) {
+                latest_date_path = Some(result.clone());
+            }
+        }
+    }
+    latest_date_path
+}
+
+fn unix_mtime(path: &Path) -> i64 {
+    match fs::metadata(path)
+        .and_then(|m| m.modified())
+        .and_then(|t| {
+            t.duration_since(std::time::UNIX_EPOCH)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        }) {
+        Ok(duration) => duration.as_secs() as i64,
+        Err(_) => 0,
+    }
+}
+
 fn count_files(root_path: &str) -> usize {
     WalkDir::new(root_path)
         .into_iter()
@@ -117,11 +162,72 @@ fn build_index<F>(
 where
     F: FnMut(usize, usize),
 {
+    let indexed_image_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM images", [], |row| row.get(0))
+        .unwrap_or(0);
+    let lazy_scan_enabled_for_root = indexed_image_count >= LARGE_FOLDER_FILE_THRESHOLD;
+
     let mut items_by_path: HashMap<String, ImageMeta> = HashMap::new();
     let mut items_by_date: HashMap<String, Vec<ImageMeta>> = HashMap::new();
+    let mut known_scan_folders: HashMap<String, ScanFolderState> = HashMap::new();
+    {
+        let mut stmt = conn
+            .prepare("SELECT folder_path, file_count, dir_mtime FROM scan_folders")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    ScanFolderState {
+                        file_count: row.get(1)?,
+                        dir_mtime: row.get(2)?,
+                    },
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            let (folder_path, state) = row.map_err(|e| e.to_string())?;
+            known_scan_folders.insert(folder_path, state);
+        }
+    }
+    let mut encountered_date_folders: HashSet<String> = HashSet::new();
+    let mut skipped_date_folders: HashSet<String> = HashSet::new();
+    let mut scan_folder_metrics: HashMap<String, ScanFolderMetrics> = HashMap::new();
     let mut processed_files = 0usize;
 
-    for entry in WalkDir::new(root_path).into_iter().filter_map(Result::ok) {
+    let mut walker = WalkDir::new(root_path).into_iter();
+    while let Some(entry_result) = walker.next() {
+        let entry = match entry_result {
+            Ok(entry) => entry,
+            Err(_) => continue,
+        };
+        let path = entry.path();
+        if entry.file_type().is_dir() {
+            if let Some(date_folder_path) = extract_date_folder_path(path) {
+                if date_folder_path == path {
+                    let folder_key = date_folder_path.to_string_lossy().to_string();
+                    let dir_mtime = unix_mtime(path);
+                    encountered_date_folders.insert(folder_key.clone());
+                    if let Some(previous) = known_scan_folders.get(&folder_key) {
+                        if lazy_scan_enabled_for_root
+                            && previous.file_count > LARGE_FOLDER_FILE_THRESHOLD
+                            && previous.dir_mtime == dir_mtime
+                        {
+                            skipped_date_folders.insert(folder_key);
+                            walker.skip_current_dir();
+                            continue;
+                        }
+                    }
+                    scan_folder_metrics.entry(folder_key).or_insert(ScanFolderMetrics {
+                        file_count: 0,
+                        max_serial: -1,
+                        max_seed: -1,
+                        dir_mtime,
+                    });
+                }
+            }
+            continue;
+        }
         if !entry.file_type().is_file() {
             continue;
         }
@@ -129,21 +235,20 @@ where
         if processed_files % 500 == 0 || processed_files == total_files {
             on_progress(processed_files, total_files);
         }
-        let path = entry.path();
+        let folder_key = extract_date_folder_path(path)
+            .map(|folder| folder.to_string_lossy().to_string());
+        if let Some(folder_key) = &folder_key {
+            if skipped_date_folders.contains(folder_key) {
+                continue;
+            }
+        }
         if let Some((serial, seed)) = parse_filename(path) {
             let date = match extract_date_from_path(path) {
                 Some(d) => d,
                 None => continue,
             };
             let path_str = path.to_string_lossy().to_string();
-            let mtime = match fs::metadata(path)
-                .and_then(|m| m.modified())
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).map_err(|e| {
-                    std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
-                })) {
-                Ok(duration) => duration.as_secs() as i64,
-                Err(_) => 0,
-            };
+            let mtime = unix_mtime(path);
             let meta = ImageMeta {
                 path: path_str.clone(),
                 date: date.clone(),
@@ -153,6 +258,28 @@ where
             };
             items_by_path.insert(path_str.clone(), meta.clone());
             items_by_date.entry(date).or_default().push(meta);
+
+            if let Some(folder_key) = folder_key {
+                encountered_date_folders.insert(folder_key.clone());
+                let metric = scan_folder_metrics
+                    .entry(folder_key.clone())
+                    .or_insert(ScanFolderMetrics {
+                        file_count: 0,
+                        max_serial: -1,
+                        max_seed: -1,
+                        dir_mtime: 0,
+                    });
+                metric.file_count += 1;
+                if serial > metric.max_serial
+                    || (serial == metric.max_serial && seed > metric.max_seed)
+                {
+                    metric.max_serial = serial;
+                    metric.max_seed = seed;
+                }
+                if metric.dir_mtime == 0 {
+                    metric.dir_mtime = unix_mtime(Path::new(&folder_key));
+                }
+            }
         }
     }
 
@@ -277,6 +404,60 @@ where
                 prev_serial = Some(item.serial);
                 prev_seed = Some(item.seed);
             }
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+    }
+
+    if !scan_folder_metrics.is_empty() || !encountered_date_folders.is_empty() {
+        let scan_ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_secs() as i64)
+            .unwrap_or(0);
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        for (folder_path, metrics) in scan_folder_metrics {
+            tx.execute(
+                r#"
+                INSERT INTO scan_folders (
+                    folder_path, last_scan_ts, file_count, max_serial, max_seed, dir_mtime, strategy
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                ON CONFLICT(folder_path) DO UPDATE SET
+                    last_scan_ts = excluded.last_scan_ts,
+                    file_count = excluded.file_count,
+                    max_serial = excluded.max_serial,
+                    max_seed = excluded.max_seed,
+                    dir_mtime = excluded.dir_mtime,
+                    strategy = excluded.strategy
+                "#,
+                params![
+                    folder_path,
+                    scan_ts,
+                    metrics.file_count,
+                    metrics.max_serial,
+                    metrics.max_seed,
+                    metrics.dir_mtime,
+                    "full"
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+
+        let mut existing_folders_stmt = tx
+            .prepare("SELECT folder_path FROM scan_folders")
+            .map_err(|e| e.to_string())?;
+        let existing_rows = existing_folders_stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        let mut to_remove = Vec::new();
+        for row in existing_rows {
+            let folder = row.map_err(|e| e.to_string())?;
+            if !encountered_date_folders.contains(&folder) {
+                to_remove.push(folder);
+            }
+        }
+        drop(existing_folders_stmt);
+        for folder in to_remove {
+            tx.execute("DELETE FROM scan_folders WHERE folder_path = ?1", params![folder])
+                .map_err(|e| e.to_string())?;
         }
         tx.commit().map_err(|e| e.to_string())?;
     }
@@ -460,9 +641,12 @@ pub fn start_scan(
 
 #[cfg(test)]
 mod tests {
-    use super::{build_index, extract_date_from_path, parse_filename};
+    use super::{
+        build_index, extract_date_folder_path, extract_date_from_path, parse_filename, unix_mtime,
+        LARGE_FOLDER_FILE_THRESHOLD,
+    };
     use crate::db::init_db;
-    use rusqlite::Connection;
+    use rusqlite::{params, Connection};
     use std::fs::{self, File};
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -489,6 +673,33 @@ mod tests {
         File::create(path).expect("failed to create test file");
     }
 
+    fn seed_indexed_images(conn: &Connection, count: usize) {
+        for index in 0..count {
+            conn.execute(
+                "INSERT INTO batches (date, first_serial, last_serial, first_seed, last_seed, representative_path) VALUES (?1, ?2, ?2, ?2, ?2, ?3)",
+                params![
+                    "2026-03-16",
+                    index as i64 + 1,
+                    format!("/seeded/2026-03-16/{:05}-{}.png", index + 1, index + 1),
+                ],
+            )
+            .expect("failed to seed batch");
+            let batch_id = conn.last_insert_rowid();
+            conn.execute(
+                "INSERT INTO images (path, date, serial, seed, batch_id, mtime, prompt_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL)",
+                params![
+                    format!("/seeded/2026-03-16/{:05}-{}.png", index + 1, index + 1),
+                    "2026-03-16",
+                    index as i64 + 1,
+                    index as i64 + 1,
+                    batch_id,
+                    1_i64,
+                ],
+            )
+            .expect("failed to seed image");
+        }
+    }
+
     #[test]
     fn parse_filename_accepts_serial_seed_png() {
         let path = Path::new("00123-987654321.png");
@@ -501,6 +712,19 @@ mod tests {
         let path = Path::new("/tmp/2025-01-01/archive/2026-03-16/00001-1.png");
         let date = extract_date_from_path(path);
         assert_eq!(date.as_deref(), Some("2026-03-16"));
+    }
+
+    #[test]
+    fn extract_date_folder_path_uses_last_date_segment_folder() {
+        let path = Path::new("/tmp/2025-01-01/archive/2026-03-16/00001-1.png");
+        let folder = extract_date_folder_path(path);
+        assert_eq!(
+            folder
+                .as_ref()
+                .map(|value| value.to_string_lossy().to_string())
+                .as_deref(),
+            Some("/tmp/2025-01-01/archive/2026-03-16")
+        );
     }
 
     #[test]
@@ -546,6 +770,102 @@ mod tests {
             .collect();
 
         assert_eq!(batches, vec![(1, 2, 100, 101), (4, 4, 103, 103)]);
+
+        let scan_folder_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM scan_folders", [], |row| row.get(0))
+            .expect("failed to query scan_folders count");
+        assert_eq!(scan_folder_count, 1);
+
+        fs::remove_dir_all(root).expect("failed to remove temp test root");
+    }
+
+    #[test]
+    fn build_index_does_not_lazy_skip_when_root_is_below_threshold() {
+        let root = create_test_root();
+        let date_dir = root.join("images").join("2026-03-16");
+        touch_file(&date_dir.join("00001-100.png"));
+        touch_file(&date_dir.join("00002-101.png"));
+        let dir_mtime = unix_mtime(&date_dir);
+
+        let mut conn = Connection::open_in_memory().expect("failed to open sqlite in-memory db");
+        init_db(&conn).expect("failed to initialize db");
+        conn.execute(
+            "INSERT INTO scan_folders (folder_path, last_scan_ts, file_count, max_serial, max_seed, dir_mtime, strategy) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                date_dir.to_string_lossy().to_string(),
+                1_i64,
+                LARGE_FOLDER_FILE_THRESHOLD + 2,
+                999_i64,
+                999_i64,
+                dir_mtime,
+                "full",
+            ],
+        )
+        .expect("failed to seed scan_folders");
+
+        let mut no_progress = |_: usize, _: usize| {};
+        build_index(
+            &mut conn,
+            root.to_str().expect("non-utf8 temp path"),
+            2,
+            &mut no_progress,
+        )
+        .expect("build_index failed");
+
+        let updated_file_count: i64 = conn
+            .query_row(
+                "SELECT file_count FROM scan_folders WHERE folder_path = ?1",
+                params![date_dir.to_string_lossy().to_string()],
+                |row| row.get(0),
+            )
+            .expect("failed to query updated scan_folders row");
+        assert_eq!(updated_file_count, 2);
+
+        fs::remove_dir_all(root).expect("failed to remove temp test root");
+    }
+
+    #[test]
+    fn build_index_lazy_skips_unchanged_large_folder_when_root_is_large() {
+        let root = create_test_root();
+        let date_dir = root.join("images").join("2026-03-16");
+        touch_file(&date_dir.join("00001-100.png"));
+        touch_file(&date_dir.join("00002-101.png"));
+        let dir_mtime = unix_mtime(&date_dir);
+
+        let mut conn = Connection::open_in_memory().expect("failed to open sqlite in-memory db");
+        init_db(&conn).expect("failed to initialize db");
+        seed_indexed_images(&conn, LARGE_FOLDER_FILE_THRESHOLD as usize);
+        conn.execute(
+            "INSERT INTO scan_folders (folder_path, last_scan_ts, file_count, max_serial, max_seed, dir_mtime, strategy) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                date_dir.to_string_lossy().to_string(),
+                1_i64,
+                LARGE_FOLDER_FILE_THRESHOLD + 2,
+                999_i64,
+                999_i64,
+                dir_mtime,
+                "full",
+            ],
+        )
+        .expect("failed to seed scan_folders");
+
+        let mut no_progress = |_: usize, _: usize| {};
+        build_index(
+            &mut conn,
+            root.to_str().expect("non-utf8 temp path"),
+            2,
+            &mut no_progress,
+        )
+        .expect("build_index failed");
+
+        let preserved_file_count: i64 = conn
+            .query_row(
+                "SELECT file_count FROM scan_folders WHERE folder_path = ?1",
+                params![date_dir.to_string_lossy().to_string()],
+                |row| row.get(0),
+            )
+            .expect("failed to query preserved scan_folders row");
+        assert_eq!(preserved_file_count, LARGE_FOLDER_FILE_THRESHOLD + 2);
 
         fs::remove_dir_all(root).expect("failed to remove temp test root");
     }

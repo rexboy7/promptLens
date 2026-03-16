@@ -88,6 +88,15 @@ fn ensure_schema_objects(conn: &Connection) -> Result<(), String> {
             signature TEXT NOT NULL,
             viewed_at INTEGER NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS scan_folders (
+            folder_path TEXT PRIMARY KEY,
+            last_scan_ts INTEGER NOT NULL,
+            file_count INTEGER NOT NULL,
+            max_serial INTEGER,
+            max_seed INTEGER,
+            dir_mtime INTEGER NOT NULL,
+            strategy TEXT NOT NULL
+        );
         "#,
     )
     .map_err(|e| e.to_string())?;
@@ -180,5 +189,6 @@ mod tests {
         assert!(
             table_exists(&conn, "viewed_groups").expect("failed to check viewed_groups table")
         );
+        assert!(table_exists(&conn, "scan_folders").expect("failed to check scan_folders table"));
     }
 }
