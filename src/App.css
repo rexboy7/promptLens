@@ -173,10 +173,22 @@ button:hover {
   padding: 5px 10px;
   min-width: 34px;
   font-size: 0.78rem;
+  background: #2f2a26;
+  color: #f7f0ea;
 }
 
-.group-page-number.active {
-  background: #1f1b18;
+.group-page-current {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  padding: 5px 10px;
+  border-radius: 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #f3efe9;
+  background: #0f0d0b;
+  border: 1px solid #0f0d0b;
 }
 
 .group-page-ellipsis {

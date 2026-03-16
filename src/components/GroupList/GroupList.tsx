@@ -55,13 +55,15 @@ export default function GroupList() {
             <span key={item.key} className="group-page-ellipsis">
               .
             </span>
+          ) : item.page === groupPage ? (
+            <span key={`page-${item.page}`} className="group-page-current">
+              {item.page + 1}
+            </span>
           ) : (
             <button
               key={`page-${item.page}`}
               type="button"
-              className={
-                item.page === groupPage ? "group-page-number active" : "group-page-number"
-              }
+              className="group-page-number"
               onClick={() => goToGroupPage(item.page)}
             >
               {item.page + 1}
